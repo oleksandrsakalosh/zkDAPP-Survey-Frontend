@@ -1,20 +1,39 @@
-# Welcome to your Expo app 👋
+# zkDAPP Survey Frontend
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Mobile frontend for a decentralized voting/survey system.  
+This app is built with Expo + React Native and currently includes a tab-based structure for:
+- `home`
+- `surveyList`
+- `newSurvey`
+- `profile`
 
-## Get started
+## Tech Stack
 
-1. Install dependencies
+- Expo SDK 54
+- React 19 + React Native 0.81
+- Expo Router (file-based navigation)
+- TypeScript
 
-   ```bash
-   npm install
-   ```
+## Prerequisites
 
-2. Start the app
+- Node.js 20 LTS (recommended)
+- npm 10+
+- IDE: VS Code (recommended)
+- Expo Go app installed on physical mobile device
 
-   ```bash
-   npx expo start
-   ```
+## Install Dependencies
+
+```bash
+npm install
+```
+
+## Run The Project
+
+Start the Expo dev server:
+
+```bash
+npx expo start
+```
 
 In the output, you'll find options to open the app in a
 
@@ -23,28 +42,38 @@ In the output, you'll find options to open the app in a
 - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
 - [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+## Useful Scripts
 
-## Get a fresh project
+- `npm run start` - start Expo dev server
+- `npm run android` - run on Android emulator/device
+- `npm run ios` - run on iOS simulator/device
+- `npm run web` - run web target
+- `npm run lint` - run lint checks
 
-When you're ready, run:
+## Project Structure
 
-```bash
-npm run reset-project
+```text
+app/
+  _layout.tsx
+  (tabs)/
+    _layout.tsx
+    home.tsx
+    surveyList.tsx
+    newSurvey.tsx
+    profile.tsx
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Notes
 
-## Learn more
+- Routing is handled with Expo Router based on files under `app/`.
+- App metadata and native config live in `app.json`.
 
-To learn more about developing your project with Expo, look at the following resources:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## Developer Team
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- Anna Sikalenko
+- Karolina Skrypova
+- Oleh Fedunchyk
+- Oleksandr Sakalosh
+- Viktoriia Femiak
+- Yehor Lykhachov
