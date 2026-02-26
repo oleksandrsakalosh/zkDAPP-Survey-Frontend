@@ -2,6 +2,7 @@ import { Tabs } from "expo-router";
 import React from "react";
 
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 export default function TabLayout() {
@@ -9,7 +10,7 @@ export default function TabLayout() {
     <Tabs
         screenOptions={{
             headerShown: false,
-            tabBarShowLabel: false,
+            tabBarShowLabel: true,
         }}
     >
         <Tabs.Screen 
@@ -18,24 +19,31 @@ export default function TabLayout() {
                 tabBarIcon: ({ color, size }) => (
                     <MaterialIcons name="home" size={size} color={color} />
                 ),
+                tabBarLabel: "Home",
              }} 
         />
 
         <Tabs.Screen
-            name="surveyList"
+            name="explore"
             options={{
                 tabBarIcon: ({ color, size }) => (
-                    <MaterialIcons name="how-to-vote" size={size} color={color} />
+                    <FontAwesome6 name="magnifying-glass" size={size} color={color} />
                 ),
+                tabBarLabel: "Explore",
+                headerShown: true,
+                headerTitle: "Explore",
             }}
         />
 
         <Tabs.Screen
-            name="newSurvey"
+            name="mySurveys"
             options={{
                 tabBarIcon: ({ color, size }) => (
-                    <FontAwesome6 name="pen-to-square" size={size} color={color} />
+                    <MaterialCommunityIcons name="view-dashboard-outline" size={size} color={color} />
                 ),
+                tabBarLabel: "My Surveys",
+                headerShown: true,
+                headerTitle: "My Surveys",
             }}
         />
 
@@ -45,6 +53,9 @@ export default function TabLayout() {
                 tabBarIcon: ({ color, size }) => (
                     <FontAwesome6 name="address-card" size={size} color={color} />
                 ),
+                tabBarLabel: "Profile",
+                headerShown: true,
+                headerTitle: "Profile",
             }}
         /> 
       

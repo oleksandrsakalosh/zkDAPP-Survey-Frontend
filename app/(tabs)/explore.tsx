@@ -1,7 +1,7 @@
 import React from "react";
 import { Text, View } from "react-native";
 
-export default function SurveyList() {
+export default function Explore() {
     return (
         <>
             <View
@@ -11,7 +11,7 @@ export default function SurveyList() {
                     alignItems: "center",
                 }}
             >
-                <Text>Survey List Screen</Text>
+                <Text>Explore Screen</Text>
             </View>
         </>
     );
