@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import * as React from "react";
+import { useMemo, useState } from "react";
 import {
     View,
     Text,
@@ -11,7 +12,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSurveyDraft } from "./SurveyDraftContext";
+import { useSurveyDraft } from "../../utils/SurveyDraftContext";
 
 function money(n: number) {
     // 1050 -> "1,050.00"
