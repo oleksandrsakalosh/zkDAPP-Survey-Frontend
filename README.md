@@ -23,7 +23,7 @@ This app is built with Expo + React Native and currently includes a tab-based st
 
 ## Detailed Setup
 
-Check [[SETUP.md]] for detailed setup instructions (both Valera and zkDAPP)
+Check [SETUP.md](SETUP.md) for detailed setup instructions (both Valera and zkDAPP)
 
 
 ## Install Dependencies
