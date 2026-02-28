@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import React from "react";
+import * as React from "react";
 
 import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
