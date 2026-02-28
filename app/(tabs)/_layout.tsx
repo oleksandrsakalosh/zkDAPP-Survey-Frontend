@@ -43,7 +43,12 @@ export default function TabLayout() {
                 ),
                 tabBarLabel: "My Surveys",
                 headerShown: true,
+                headerTitleAlign: "left",
                 headerTitle: "My Surveys",
+                headerTitleStyle: {
+                    fontSize: 24,
+                    fontWeight: "700",
+                },
             }}
         />
 
