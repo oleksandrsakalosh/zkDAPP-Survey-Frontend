@@ -11,9 +11,13 @@ export const palette = {
     success: "#16A34A",
     successLight: "#DCFCE7",
 
-    // Warning
-    warning: "#EA580C",
-    warningLight: "#FFF7ED",
+    // orange
+    orange: "#EA580C",
+    orangeLight: "#FFF7ED",
+
+    //warning
+    warning: "#DC2626",
+    warningLight: "#FECACA",
 
     // Text
     textPrimary: "#000000",
