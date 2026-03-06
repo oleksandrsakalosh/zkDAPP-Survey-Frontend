@@ -12,7 +12,9 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSurveyDraft } from "../../utils/SurveyDraftContext";
+
+import { palette } from "@/theme/palette";
+import { useSurveyDraft } from "@/utils/SurveyDraftContext";
 
 function money(n: number) {
     // 1050 -> "1,050.00"
@@ -212,8 +214,8 @@ export default function SurveyBudgetStep() {
                         <Switch
                             value={anonymity}
                             onValueChange={setAnonymity}
-                            trackColor={{ false: "#E5E7EB", true: "#2F6BFF" }}
-                            thumbColor="#FFFFFF"
+                            trackColor={{ false: "#E5E7EB", true: palette.primary }}
+                            thumbColor="palette.white"
                         />
                     </View>
                 </View>
@@ -236,7 +238,7 @@ export default function SurveyBudgetStep() {
 }
 
 const styles = StyleSheet.create({
-    safe: { flex: 1, backgroundColor: "#FFFFFF" },
+    safe: { flex: 1, backgroundColor: palette.white },
 
     header: {
         paddingHorizontal: 16,
@@ -254,7 +256,7 @@ const styles = StyleSheet.create({
         borderColor: "#E5E7EB",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.white,
     },
     headerTitle: { fontSize: 26, fontWeight: "800", color: "#111827" },
 
@@ -269,11 +271,11 @@ const styles = StyleSheet.create({
         marginTop: 10,
         overflow: "hidden",
     },
-    progressActive: { height: 3, backgroundColor: "#2F6BFF" },
+    progressActive: { height: 3, backgroundColor: palette.primary },
 
     stepsRow: { flexDirection: "row", gap: 10, marginTop: 10 },
     stepPill: { flex: 1, height: 4, borderRadius: 999, backgroundColor: "#E5E7EB" },
-    stepPillActive: { backgroundColor: "#2F6BFF" },
+    stepPillActive: { backgroundColor: palette.primary },
 
     content: { paddingHorizontal: 16, paddingTop: 14 },
 
@@ -288,7 +290,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14,
         fontSize: 16,
         color: "#111827",
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.white,
     },
 
     lockedInput: {
@@ -310,7 +312,7 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         borderWidth: 1,
         borderColor: "#E5E7EB",
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.white,
         alignItems: "center",
         justifyContent: "center",
         flexDirection: "row",
@@ -326,7 +328,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#EEF4FF",
         padding: 14,
     },
-    costTitle: { fontSize: 13, fontWeight: "900", color: "#2F6BFF", marginBottom: 10 },
+    costTitle: { fontSize: 13, fontWeight: "900", color: palette.primary, marginBottom: 10 },
 
     costRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
     costLeft: { color: "#6B7280", fontWeight: "700" },
@@ -335,20 +337,20 @@ const styles = StyleSheet.create({
     costHr: { height: 1, backgroundColor: "#CFE3FF", marginVertical: 10 },
 
     totalLeft: { color: "#111827", fontWeight: "900" },
-    totalRight: { color: "#2F6BFF", fontWeight: "900" },
+    totalRight: { color: palette.primary, fontWeight: "900" },
 
     anonCard: {
         marginTop: 14,
         borderRadius: 18,
         borderWidth: 1,
         borderColor: "#E5E7EB",
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.white,
         padding: 14,
     },
     anonTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
     anonTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
     anonSub: { marginTop: 6, color: "#6B7280", fontWeight: "600" },
-    anonLink: { marginTop: 8, color: "#2F6BFF", fontWeight: "800" },
+    anonLink: { marginTop: 8, color: palette.primary, fontWeight: "800" },
 
     bottomBar: {
         position: "absolute",
@@ -357,7 +359,7 @@ const styles = StyleSheet.create({
         bottom: 0,
         borderTopWidth: 1,
         borderTopColor: "#E5E7EB",
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.white,
         paddingHorizontal: 16,
         paddingVertical: 14,
         flexDirection: "row",
@@ -371,7 +373,7 @@ const styles = StyleSheet.create({
         borderColor: "#E5E7EB",
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: "#FFFFFF",
+        backgroundColor: palette.white,
     },
     draftText: { fontSize: 16, fontWeight: "700", color: "#6B7280" },
 
@@ -379,11 +381,11 @@ const styles = StyleSheet.create({
         flex: 1.4,
         height: 56,
         borderRadius: 16,
-        backgroundColor: "#2F6BFF",
+        backgroundColor: palette.primary,
         alignItems: "center",
         justifyContent: "center",
     },
-    publishText: { fontSize: 16, fontWeight: "900", color: "#FFFFFF" },
+    publishText: { fontSize: 16, fontWeight: "900", color: palette.white },
     inputError: {
         borderColor: "#EF4444",
         borderWidth: 1.5,

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useMemo, useState } from "react";
 
-export type QuestionType = "Multiple choice" | "Paragraph";
+export type QuestionType = "Multiple choice" | "Paragraph" | "Single choice";
 
 export type SurveyQuestion = {
   id: string;

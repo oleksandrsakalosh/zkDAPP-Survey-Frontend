@@ -6,7 +6,11 @@ import { SurveyDraftProvider } from "../../utils/SurveyDraftContext";
 export default function Layout() {
   return (
     <SurveyDraftProvider>
-      <Stack />
+      <Stack
+      screenOptions={{
+        headerShown: false,
+      }}
+    />
     </SurveyDraftProvider>
   );
 }
