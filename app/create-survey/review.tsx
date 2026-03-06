@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import * as React from "react";
+import { useMemo, useState } from "react";
 import {
     View,
     Text,
@@ -11,8 +12,9 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSurveyDraft } from "./SurveyDraftContext";
+
 import { palette } from "@/theme/palette";
+import { useSurveyDraft } from "@/utils/SurveyDraftContext";
 
 function money(n: number) {
     // 1050 -> "1,050.00"
@@ -212,7 +214,7 @@ export default function SurveyBudgetStep() {
                         <Switch
                             value={anonymity}
                             onValueChange={setAnonymity}
-                            trackColor={{ false: "#E5E7EB", true: "palette.primary" }}
+                            trackColor={{ false: "#E5E7EB", true: palette.primary }}
                             thumbColor="palette.white"
                         />
                     </View>
@@ -269,11 +271,11 @@ const styles = StyleSheet.create({
         marginTop: 10,
         overflow: "hidden",
     },
-    progressActive: { height: 3, backgroundColor: "palette.primary" },
+    progressActive: { height: 3, backgroundColor: palette.primary },
 
     stepsRow: { flexDirection: "row", gap: 10, marginTop: 10 },
     stepPill: { flex: 1, height: 4, borderRadius: 999, backgroundColor: "#E5E7EB" },
-    stepPillActive: { backgroundColor: "palette.primary" },
+    stepPillActive: { backgroundColor: palette.primary },
 
     content: { paddingHorizontal: 16, paddingTop: 14 },
 
@@ -326,7 +328,7 @@ const styles = StyleSheet.create({
         backgroundColor: "#EEF4FF",
         padding: 14,
     },
-    costTitle: { fontSize: 13, fontWeight: "900", color: "palette.primary", marginBottom: 10 },
+    costTitle: { fontSize: 13, fontWeight: "900", color: palette.primary, marginBottom: 10 },
 
     costRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 },
     costLeft: { color: "#6B7280", fontWeight: "700" },
@@ -335,7 +337,7 @@ const styles = StyleSheet.create({
     costHr: { height: 1, backgroundColor: "#CFE3FF", marginVertical: 10 },
 
     totalLeft: { color: "#111827", fontWeight: "900" },
-    totalRight: { color: "palette.primary", fontWeight: "900" },
+    totalRight: { color: palette.primary, fontWeight: "900" },
 
     anonCard: {
         marginTop: 14,
@@ -348,7 +350,7 @@ const styles = StyleSheet.create({
     anonTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
     anonTitle: { fontSize: 16, fontWeight: "900", color: "#111827" },
     anonSub: { marginTop: 6, color: "#6B7280", fontWeight: "600" },
-    anonLink: { marginTop: 8, color: "palette.primary", fontWeight: "800" },
+    anonLink: { marginTop: 8, color: palette.primary, fontWeight: "800" },
 
     bottomBar: {
         position: "absolute",

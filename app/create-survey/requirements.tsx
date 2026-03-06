@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import * as React from "react";
+import { useMemo, useState } from "react";
 import {
     View,
     Text,
@@ -7,12 +8,12 @@ import {
     SafeAreaView,
     ScrollView,
     TextInput,
-    Modal,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useSurveyDraft } from "./SurveyDraftContext";
+
 import { palette } from "@/theme/palette";
+import { useSurveyDraft } from "@/utils/SurveyDraftContext";
 
 type RequirementType = "Age" | "Location" | "Education level" | "";
 
@@ -44,6 +45,9 @@ type RequirementDropdownProps = {
     value: RequirementType;
     options: RequirementType[];
     placeholder?: string;
+    isOpen: boolean;
+    onOpen: () => void;
+    onClose: () => void;
     onSelect: (value: RequirementType) => void;
 };
 
@@ -51,63 +55,76 @@ function RequirementDropdown({
     value,
     options,
     placeholder = "Select requirement",
+    isOpen,
+    onOpen,
+    onClose,
     onSelect,
 }: RequirementDropdownProps) {
-    const [visible, setVisible] = useState(false);
-
     const handleSelect = (nextValue: RequirementType) => {
         onSelect(nextValue);
-        setVisible(false);
+        onClose();
     };
 
     return (
-        <>
-            <Pressable style={styles.dropdownField} onPress={() => setVisible(true)}>
+        <View style={styles.dropdownWrap}>
+            <Pressable style={styles.dropdownField} onPress={isOpen ? onClose : onOpen}>
                 <Text style={[styles.dropdownText, !value && styles.dropdownPlaceholder]}>
                     {value || placeholder}
                 </Text>
-                <Ionicons name="chevron-down" size={20} color="#111827" />
+                <Ionicons
+                    name={isOpen ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color="#6B7280"
+                />
             </Pressable>
 
-            <Modal
-                visible={visible}
-                transparent
-                animationType="fade"
-                onRequestClose={() => setVisible(false)}
-            >
-                <Pressable style={styles.modalOverlay} onPress={() => setVisible(false)}>
-                    <Pressable style={styles.modalCard} onPress={() => {}}>
-                        <Text style={styles.modalTitle}>Select requirement</Text>
+            {isOpen && (
+                <View style={styles.dropdownMenu}>
+                    {!!value && (
+                        <Pressable
+                            style={styles.dropdownItem}
+                            onPress={() => handleSelect("")}
+                        >
+                            <Text style={[styles.dropdownItemText, styles.clearOptionText]}>
+                                Clear selection
+                            </Text>
+                        </Pressable>
+                    )}
 
-                        <ScrollView showsVerticalScrollIndicator={false}>
-                            {!!value && (
-                                <Pressable
-                                    style={styles.optionRow}
-                                    onPress={() => handleSelect("")}
-                                >
-                                    <Text style={[styles.optionText, styles.clearOptionText]}>
-                                        Clear selection
-                                    </Text>
-                                </Pressable>
-                            )}
+                    {options.map((option) => {
+                        const active = value === option;
 
-                            {options.map((option) => (
-                                <Pressable
-                                    key={option}
-                                    style={styles.optionRow}
-                                    onPress={() => handleSelect(option)}
+                        return (
+                            <Pressable
+                                key={option}
+                                style={[
+                                    styles.dropdownItem,
+                                    active && styles.dropdownItemActive,
+                                ]}
+                                onPress={() => handleSelect(option)}
+                            >
+                                <Text
+                                    style={[
+                                        styles.dropdownItemText,
+                                        active && styles.dropdownItemTextActive,
+                                    ]}
                                 >
-                                    <Text style={styles.optionText}>{option}</Text>
-                                    {value === option && (
-                                        <Ionicons name="checkmark" size={18} color="palette.primary" />
-                                    )}
-                                </Pressable>
-                            ))}
-                        </ScrollView>
-                    </Pressable>
-                </Pressable>
-            </Modal>
-        </>
+                                    {option}
+                                </Text>
+
+                                {active && (
+                                    <Ionicons
+                                        name="checkmark"
+                                        size={16}
+                                        color={palette.primary}
+                                    />
+                                )}
+                            </Pressable>
+                        );
+                    })}
+                </View>
+            )}
+        </View>
     );
 }
 
@@ -132,6 +149,7 @@ export default function RequirementsStep() {
 
     const [requirements, setRequirements] = useState<Requirement[]>(initialRequirements);
     const [submitAttempted, setSubmitAttempted] = useState(false);
+    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
     const selectedTypes = useMemo(
         () => requirements.map((r) => r.type).filter(Boolean) as Exclude<RequirementType, "">[],
@@ -155,6 +173,7 @@ export default function RequirementsStep() {
 
     const removeReq = (id: string) => {
         setRequirements((prev) => prev.filter((r) => r.id !== id));
+        setOpenDropdownId((prev) => (prev === id ? null : prev));
     };
 
     const addReq = () => {
@@ -199,115 +218,130 @@ export default function RequirementsStep() {
 
     return (
         <SafeAreaView style={styles.safe}>
-            <View style={styles.header}>
-                <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
-                    <Ionicons name="chevron-back" size={22} color="#111827" />
-                </Pressable>
-                <Text style={styles.headerTitle}>Create Survey</Text>
-            </View>
-
-            <View style={styles.sectionTop}>
-                <Text style={styles.sectionTitle}>Voter Requirements</Text>
-                <View style={styles.divider} />
-
-                <View style={styles.stepsRow}>
-                    <View style={styles.stepPill} />
-                    <View style={styles.stepPill} />
-                    <View style={[styles.stepPill, styles.stepPillActive]} />
-                    <View style={styles.stepPill} />
+            <Pressable style={{ flex: 1 }} onPress={() => setOpenDropdownId(null)}>
+                <View style={styles.header}>
+                    <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
+                        <Ionicons name="chevron-back" size={22} color="#111827" />
+                    </Pressable>
+                    <Text style={styles.headerTitle}>Create Survey</Text>
                 </View>
-            </View>
 
-            <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-                <View style={styles.infoBox}>
-                    <View style={styles.infoIconWrap}>
-                        <Ionicons name="information" size={16} color="palette.primary" />
+                <View style={styles.sectionTop}>
+                    <Text style={styles.sectionTitle}>Voter Requirements</Text>
+                    <View style={styles.divider} />
+
+                    <View style={styles.stepsRow}>
+                        <View style={styles.stepPill} />
+                        <View style={styles.stepPill} />
+                        <View style={[styles.stepPill, styles.stepPillActive]} />
+                        <View style={styles.stepPill} />
                     </View>
-                    <Text style={styles.infoText}>
-                        Set conditions voters must meet before they can participate. Leave empty to allow anyone.
-                    </Text>
                 </View>
 
-                {requirements.map((r) => {
-                    const err = submitAttempted ? getReqError(r) : null;
-                    const valueError = submitAttempted && !!r.type && !r.value.trim();
-                    const typeError = submitAttempted && !r.type.trim();
-                    const availableTypes = getAvailableTypes(r.id);
-                    const placeholder = r.type ? placeholderByType[r.type] : "Enter value";
+                <ScrollView
+                    contentContainerStyle={styles.content}
+                    showsVerticalScrollIndicator={false}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    <View style={styles.infoBox}>
+                        <View style={styles.infoIconWrap}>
+                            <Ionicons name="information" size={16} color={palette.primary} />
+                        </View>
+                        <Text style={styles.infoText}>
+                            Set conditions voters must meet before they can participate. Leave empty to
+                            allow anyone.
+                        </Text>
+                    </View>
 
-                    return (
-                        <View key={r.id} style={{ marginBottom: 14 }}>
-                            <View style={styles.reqRow}>
-                                <View style={{ flex: 1 }}>
-                                    <RequirementDropdown
-                                        value={r.type}
-                                        options={availableTypes}
-                                        onSelect={(value) =>
-                                            updateReq(r.id, {
-                                                type: value,
-                                                value: "",
-                                            })
-                                        }
+                    {requirements.map((r) => {
+                        const err = submitAttempted ? getReqError(r) : null;
+                        const valueError = submitAttempted && !!r.type && !r.value.trim();
+                        const typeError = submitAttempted && !r.type.trim();
+                        const availableTypes = getAvailableTypes(r.id);
+                        const placeholder = r.type ? placeholderByType[r.type] : "Enter value";
+
+                        return (
+                            <View
+                                key={r.id}
+                                style={[styles.reqBlock, openDropdownId === r.id && styles.reqBlockOpen]}
+                            >
+                                <Pressable onPress={() => setOpenDropdownId(null)}>
+                                    <View style={styles.reqRow}>
+                                        <View style={{ flex: 1 }}>
+                                            <RequirementDropdown
+                                                value={r.type}
+                                                options={availableTypes}
+                                                isOpen={openDropdownId === r.id}
+                                                onOpen={() => setOpenDropdownId(r.id)}
+                                                onClose={() => setOpenDropdownId(null)}
+                                                onSelect={(value) =>
+                                                    updateReq(r.id, {
+                                                        type: value,
+                                                        value: "",
+                                                    })
+                                                }
+                                            />
+                                            {typeError && (
+                                                <Text style={styles.inlineErrorText}>
+                                                    Requirement is required.
+                                                </Text>
+                                            )}
+                                        </View>
+
+                                        <Pressable
+                                            onPress={() => removeReq(r.id)}
+                                            style={styles.trashBtn}
+                                            hitSlop={10}
+                                        >
+                                            <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                                        </Pressable>
+                                    </View>
+
+                                    <TextInput
+                                        value={r.value}
+                                        onChangeText={(t) => updateReq(r.id, { value: t })}
+                                        placeholder={placeholder}
+                                        placeholderTextColor="#9CA3AF"
+                                        style={[styles.reqInput, valueError && styles.inputError]}
                                     />
-                                    {typeError && (
-                                        <Text style={styles.inlineErrorText}>
-                                            Requirement is required.
-                                        </Text>
-                                    )}
-                                </View>
 
-                                <Pressable
-                                    onPress={() => removeReq(r.id)}
-                                    style={styles.trashBtn}
-                                    hitSlop={10}
-                                >
-                                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                                    {valueError && <Text style={styles.inlineErrorText}>{err}</Text>}
                                 </Pressable>
                             </View>
+                        );
+                    })}
 
-                            <TextInput
-                                value={r.value}
-                                onChangeText={(t) => updateReq(r.id, { value: t })}
-                                placeholder={placeholder}
-                                placeholderTextColor="#9CA3AF"
-                                style={[styles.reqInput, valueError && styles.inputError]}
-                            />
+                    <Pressable
+                        onPress={addReq}
+                        style={[styles.addReqBtn, !canAddMore && styles.addReqBtnDisabled]}
+                        disabled={!canAddMore}
+                    >
+                        <Text style={styles.addReqPlus}>+</Text>
+                        <Text style={[styles.addReqText, !canAddMore && styles.addReqTextDisabled]}>
+                            Add requirement
+                        </Text>
+                    </Pressable>
 
-                            {valueError && <Text style={styles.inlineErrorText}>{err}</Text>}
-                        </View>
-                    );
-                })}
+                    {!canAddMore && (
+                        <Text style={styles.helperText}>
+                            All available requirements have already been added.
+                        </Text>
+                    )}
 
-                <Pressable
-                    onPress={addReq}
-                    style={[styles.addReqBtn, !canAddMore && styles.addReqBtnDisabled]}
-                    disabled={!canAddMore}
-                >
-                    <Text style={styles.addReqPlus}>+</Text>
-                    <Text style={[styles.addReqText, !canAddMore && styles.addReqTextDisabled]}>
-                        Add requirement
-                    </Text>
-                </Pressable>
+                    <View style={{ height: 110 }} />
+                </ScrollView>
 
-                {!canAddMore && (
-                    <Text style={styles.helperText}>
-                        All available requirements have already been added.
-                    </Text>
-                )}
+                <View style={styles.bottomBar}>
+                    <Pressable style={styles.draftBtn} onPress={() => console.log("Save draft step3")}>
+                        <Text style={styles.draftText}>Save as Draft</Text>
+                    </Pressable>
 
-                <View style={{ height: 110 }} />
-            </ScrollView>
-
-            <View style={styles.bottomBar}>
-                <Pressable style={styles.draftBtn} onPress={() => console.log("Save draft step3")}>
-                    <Text style={styles.draftText}>Save as Draft</Text>
-                </Pressable>
-
-                <Pressable style={styles.nextBtn} onPress={onNext}>
-                    <Text style={styles.nextText}>Next (3/4)</Text>
-                    <Text style={styles.nextArrow}>›</Text>
-                </Pressable>
-            </View>
+                    <Pressable style={styles.nextBtn} onPress={onNext}>
+                        <Text style={styles.nextText}>Next (3/4)</Text>
+                        <Text style={styles.nextArrow}>›</Text>
+                    </Pressable>
+                </View>
+            </Pressable>
         </SafeAreaView>
     );
 }
@@ -368,7 +402,25 @@ const styles = StyleSheet.create({
     },
     infoText: { flex: 1, color: palette.primary, fontWeight: "700", lineHeight: 20 },
 
-    reqRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+    reqBlock: {
+        marginBottom: 14,
+        overflow: "visible",
+    },
+    reqBlockOpen: {
+        zIndex: 30,
+    },
+
+    reqRow: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        gap: 12,
+        zIndex: 20,
+    },
+
+    dropdownWrap: {
+        position: "relative",
+        zIndex: 50,
+    },
 
     dropdownField: {
         height: 54,
@@ -389,6 +441,52 @@ const styles = StyleSheet.create({
     dropdownPlaceholder: {
         color: "#9CA3AF",
         fontWeight: "400",
+    },
+
+    dropdownMenu: {
+        position: "absolute",
+        top: 58,
+        left: 0,
+        right: 0,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
+        backgroundColor: palette.white,
+        paddingVertical: 6,
+        shadowColor: "#000",
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 8,
+        zIndex: 999,
+    },
+
+    dropdownItem: {
+        minHeight: 42,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+
+    dropdownItemActive: {
+        backgroundColor: "#F3F7FF",
+    },
+
+    dropdownItemText: {
+        fontSize: 14,
+        fontWeight: "600",
+        color: "#111827",
+    },
+
+    dropdownItemTextActive: {
+        color: palette.primary,
+        fontWeight: "800",
+    },
+
+    clearOptionText: {
+        color: "#6B7280",
     },
 
     reqInput: {
@@ -424,42 +522,6 @@ const styles = StyleSheet.create({
         color: "#EF4444",
         fontSize: 12,
         fontWeight: "700",
-    },
-
-    modalOverlay: {
-        flex: 1,
-        backgroundColor: "rgba(17, 24, 39, 0.35)",
-        justifyContent: "center",
-        paddingHorizontal: 20,
-    },
-    modalCard: {
-        backgroundColor: palette.white,
-        borderRadius: 20,
-        padding: 14,
-        maxHeight: "60%",
-    },
-    modalTitle: {
-        fontSize: 16,
-        fontWeight: "800",
-        color: "#111827",
-        marginBottom: 10,
-    },
-    optionRow: {
-        minHeight: 50,
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 12,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-    },
-    optionText: {
-        fontSize: 16,
-        color: "#111827",
-        fontWeight: "500",
-    },
-    clearOptionText: {
-        color: "#6B7280",
     },
 
     addReqBtn: {
