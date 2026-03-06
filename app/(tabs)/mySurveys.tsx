@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Dimensions, StyleSheet, Pressable, Text, TouchableOpacity, View } from "react-native";
 
 import CreatedSurveys from "@/app/survey/createdSurveys";
 import ParticipatedSurveys, { Survey } from "@/app/survey/participatedSurveys";
@@ -7,6 +7,8 @@ import { CreatedSurveyCardData } from "@/components/createdSurveyCard";
 import { palette } from "@/theme/palette";
 
 const { width } = Dimensions.get("window");
+import { router } from "expo-router";
+
 
 export default function MySurveys() {
     const [activeTab, setActiveTab] = useState<"created" | "participated">("created");
@@ -137,6 +139,28 @@ export default function MySurveys() {
                     <ParticipatedSurveys surveys={participatedSurveys} />
                 )}
             </View>
+
+            <Pressable
+                onPress={() => router.push("/create-survey")}
+                style={({ pressed }) => ({
+                backgroundColor: "#2F6BFF",
+                opacity: pressed ? 0.9 : 1,
+                borderRadius: 16,
+                height: 56,
+                width: "100%",
+                justifyContent: "center",
+                alignItems: "center",
+                flexDirection: "row",
+                })}
+            >
+                <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "600" }}>
+                    Create survey
+                </Text>
+                <Text style={{ color: "#FFFFFF", fontSize: 22, marginLeft: 10, marginTop: -1 }}>
+                    ›
+                </Text>
+            </Pressable>
+            
         </View>
     );
 }
