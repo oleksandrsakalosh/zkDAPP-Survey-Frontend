@@ -8,7 +8,7 @@ import { palette } from "@/theme/palette";
 
 const { width } = Dimensions.get("window");
 import { router } from "expo-router";
-import { palette } from "@/theme/palette";
+
 
 export default function MySurveys() {
     const [activeTab, setActiveTab] = useState<"created" | "participated">("created");
