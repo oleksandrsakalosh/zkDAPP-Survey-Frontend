@@ -21,6 +21,11 @@ This app is built with Expo + React Native and currently includes a tab-based st
 - IDE: VS Code (recommended)
 - Expo Go app installed on physical mobile device
 
+## Detailed Setup
+
+Check [SETUP.md](SETUP.md) for detailed setup instructions (both Valera and zkDAPP)
+
+
 ## Install Dependencies
 
 ```bash
