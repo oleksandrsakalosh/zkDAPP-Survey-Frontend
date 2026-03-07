@@ -130,7 +130,7 @@ export default function MySurveys() {
                 {activeTab === "created" ? (
                     <CreatedSurveys
                         surveys={createdSurveys}
-                        onCreateNew={() => {}}
+                        onCreateNew={() => {router.push("/create-survey")}}
                         onManage={() => {}}
                         onEdit={() => {}}
                         onResults={() => {}}
@@ -139,27 +139,6 @@ export default function MySurveys() {
                     <ParticipatedSurveys surveys={participatedSurveys} />
                 )}
             </View>
-
-            <Pressable
-                onPress={() => router.push("/create-survey")}
-                style={({ pressed }) => ({
-                backgroundColor: "#2F6BFF",
-                opacity: pressed ? 0.9 : 1,
-                borderRadius: 16,
-                height: 56,
-                width: "100%",
-                justifyContent: "center",
-                alignItems: "center",
-                flexDirection: "row",
-                })}
-            >
-                <Text style={{ color: "#FFFFFF", fontSize: 18, fontWeight: "600" }}>
-                    Create survey
-                </Text>
-                <Text style={{ color: "#FFFFFF", fontSize: 22, marginLeft: 10, marginTop: -1 }}>
-                    ›
-                </Text>
-            </Pressable>
             
         </View>
     );
