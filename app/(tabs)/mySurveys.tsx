@@ -1,17 +1,30 @@
-import React, { useState } from "react";
-import { Dimensions, StyleSheet, Pressable, Text, TouchableOpacity, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Dimensions, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 import CreatedSurveys from "@/app/survey/createdSurveys";
 import ParticipatedSurveys, { Survey } from "@/app/survey/participatedSurveys";
 import { CreatedSurveyCardData } from "@/components/createdSurveyCard";
 import { palette } from "@/theme/palette";
+import { router, useLocalSearchParams } from "expo-router";
 
 const { width } = Dimensions.get("window");
-import { router } from "expo-router";
 
 
 export default function MySurveys() {
-    const [activeTab, setActiveTab] = useState<"created" | "participated">("created");
+    const params = useLocalSearchParams<{ tab?: string | string[] }>();
+
+    const normalizeTab = (value?: string | string[]): "created" | "participated" => {
+        const rawValue = Array.isArray(value) ? value[0] : value;
+        return rawValue === "participated" ? "participated" : "created";
+    };
+
+    const [activeTab, setActiveTab] = useState<"created" | "participated">(
+        normalizeTab(params.tab)
+    );
+
+    useEffect(() => {
+        setActiveTab(normalizeTab(params.tab));
+    }, [params.tab]);
 
     const createdSurveys: CreatedSurveyCardData[] = [
         {

@@ -5,10 +5,10 @@ import {
     Text,
     Pressable,
     StyleSheet,
-    SafeAreaView,
     ScrollView,
     TextInput,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
