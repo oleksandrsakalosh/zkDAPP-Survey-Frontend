@@ -1,6 +1,6 @@
 import Feather from "@expo/vector-icons/Feather";
-import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
 import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -65,7 +65,7 @@ export default function SurveyCard({ survey, onVote, voteLabel = "Vote" }: Props
 
             <View style={styles.cardFooter}>
                 <View style={styles.metaRow}>
-                    <FontAwesome6 name="clock" size={13} color={palette.black} />
+                    <MaterialIcons name="schedule" size={13} color={palette.black} />
                     <Text style={styles.metaText}>{survey.estimatedMinutes} min</Text>
                 </View>
                 <View style={styles.metaRow}>

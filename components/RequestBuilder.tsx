@@ -13,6 +13,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { poseidon1 } from 'poseidon-lite';
 import { palette } from '@/theme/palette';
 import {
   CREDENTIAL_TYPES,
@@ -29,6 +30,24 @@ interface RequestBuilderState {
   selectedAttributes: Set<string>;
   voteMessage: string;
   isLoading: boolean;
+}
+
+function parseVoteMessageToBigInt(voteMessage: string): bigint {
+  const trimmed = voteMessage.trim();
+  if (!trimmed) {
+    throw new Error('Please type a vote message.');
+  }
+  try {
+    return BigInt(trimmed);
+  } catch {
+    throw new Error('Vote message must be an integer value (for example: 1, 2, 42).');
+  }
+}
+
+function computeVotePoseidonHex(voteMessage: string): string {
+  const voteBigInt = parseVoteMessageToBigInt(voteMessage);
+  const hashBigInt = poseidon1([voteBigInt]);
+  return hashBigInt.toString(16).padStart(64, '0');
 }
 
 function fnv1aHex(input: string): string {
@@ -124,10 +143,11 @@ export default function RequestBuilder({ onClose }: RequestBuilderProps) {
       if (!voteMessage) {
         throw new Error('Please type a message to bind into nonceChallenge.');
       }
+      const voteHash = computeVotePoseidonHex(voteMessage);
       const selectedClaims = Array.from(state.selectedAttributes);
       const nonce = createNonceChallenge(requestId, voteMessage, selectedClaims);
-      const callbackUrl = `zkdappsurveyfrontend://auth?voteMessage=${encodeURIComponent(
-        voteMessage,
+      const callbackUrl = `zkdappsurveyfrontend://auth?voteHash=${encodeURIComponent(
+        voteHash,
       )}&requestedClaims=${encodeURIComponent(JSON.stringify(selectedClaims))}&nonceChallenge=${encodeURIComponent(
         nonce,
       )}`;
@@ -160,6 +180,7 @@ export default function RequestBuilder({ onClose }: RequestBuilderProps) {
         requestId,
         nonceChallenge: nonce,
         voteMessage,
+        voteHash,
       });
 
       // In some runtimes (Expo Go), canOpenURL may return false for custom schemes

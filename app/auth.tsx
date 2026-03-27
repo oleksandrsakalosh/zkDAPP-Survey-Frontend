@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Pressable, Share } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 type JwtHeaderPayload = {
@@ -11,24 +11,132 @@ type JwtHeaderPayload = {
 
 type ParsedCircuitInput = {
   requestedAttributes: string[];
-  voteMessage: string;
+  voteHashHex: string;
   issuerSignature: string;
   issuerPublicKey: string;
   issuerAlg: string;
-  holderSignature: string;
-  holderPublicKey: string;
+  holderSignature: HolderSignatureCoordinates | null;
+  holderPublicKey: HolderPublicKeyCoordinates | null;
   holderAlg: string;
   requestedDisclosedClaims: Record<string, unknown>;
 };
+
+type HolderPublicKeyCoordinates = {
+  x: string;
+  y: string;
+};
+
+type HolderSignatureCoordinates = {
+  R: {
+    x: string;
+    y: string;
+  };
+  S: string;
+};
+
+type CircuitInput = null;
 
 type CallbackData = {
   status: string;
   requestId: string;
   receivedAt: string;
   parsedCircuitInput: ParsedCircuitInput;
+  circuitInput: CircuitInput;
   errorCode?: string;
   errorMessage?: string;
 };
+
+function splitHolderPublicKey(rawPublicKey: string): HolderPublicKeyCoordinates | null {
+  if (!rawPublicKey) return null;
+  const parts = rawPublicKey.split('|').map((part) => part.trim());
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  return { x: parts[0], y: parts[1] };
+}
+
+function splitHolderSignature(rawSignature: string): HolderSignatureCoordinates | null {
+  if (!rawSignature) return null;
+
+  const pipeParts = rawSignature.split('|').map((part) => part.trim());
+  if (pipeParts.length === 3 && pipeParts.every((part) => part.length > 0)) {
+    return {
+      R: {
+        x: pipeParts[0],
+        y: pipeParts[1],
+      },
+      S: pipeParts[2],
+    };
+  }
+
+  const compact = rawSignature.trim();
+  const normalized = compact.startsWith('0x') ? compact.slice(2) : compact;
+  const expectedHexChars = 192; // 96-byte signature: Rx(32) || Ry(32) || S(32)
+  if (!/^[0-9a-fA-F]+$/.test(normalized) || normalized.length < expectedHexChars) {
+    return null;
+  }
+
+  const rx = normalized.slice(0, 64);
+  const ry = normalized.slice(64, 128);
+  const s = normalized.slice(128, 192);
+
+  return {
+    R: {
+      x: rx,
+      y: ry,
+    },
+    S: s,
+  };
+}
+
+type LogLevel = 'log' | 'warn' | 'error';
+
+function emitTerminalLog(level: LogLevel, message: string) {
+  if (level === 'error') {
+    console.error(message);
+  } else if (level === 'warn') {
+    console.warn(message);
+  } else {
+    console.log(message);
+  }
+
+  const globalWithNativeLog = globalThis as typeof globalThis & {
+    nativeLoggingHook?: (msg: string, level?: number) => void;
+  };
+  const levelCode = level === 'error' ? 2 : level === 'warn' ? 1 : 0;
+  try {
+    globalWithNativeLog.nativeLoggingHook?.(message, levelCode);
+  } catch {
+    // Keep logging best-effort only.
+  }
+}
+
+function logJsonToTerminal(label: string, payload: unknown) {
+  const pretty = JSON.stringify(payload, null, 2);
+  const singleLine = JSON.stringify(payload);
+  if (!pretty) {
+    emitTerminalLog('log', `[AuthCallback] ${label}: <empty>`);
+    emitTerminalLog('warn', `[AuthCallback][WARN] ${label}: <empty>`);
+    return;
+  }
+
+  const chunkSize = 1800;
+  const chunks = Math.ceil(pretty.length / chunkSize);
+  emitTerminalLog('warn', `[AuthCallback][WARN] ${label} available; length=${pretty.length}; chunks=${chunks}`);
+  if (singleLine) {
+    const maxSingleLine = 3500;
+    const clipped = singleLine.length > maxSingleLine
+      ? `${singleLine.slice(0, maxSingleLine)}...<truncated>`
+      : singleLine;
+    // Single-line fallback helps when multiline logs are folded by terminal tooling.
+    emitTerminalLog('warn', `[AuthCallback][WARN][${label}] ${clipped}`);
+  }
+  emitTerminalLog('log', `[AuthCallback] ===== ${label} START =====`);
+  for (let i = 0; i < chunks; i += 1) {
+    const start = i * chunkSize;
+    const part = pretty.slice(start, start + chunkSize);
+    emitTerminalLog('log', `[AuthCallback] ${label} (${i + 1}/${chunks})\n${part}`);
+  }
+  emitTerminalLog('log', `[AuthCallback] ===== ${label} END =====`);
+}
 
 function parseStringArray(value?: string | null): string[] {
   if (!value) return [];
@@ -437,6 +545,19 @@ export default function AuthCallbackScreen() {
     setDebugLogs((current) => [...current.slice(-7), `${new Date().toLocaleTimeString()} ${message}`]);
   };
 
+  const sharePayload = async (title: string, payload: unknown) => {
+    try {
+      await Share.share({
+        title,
+        message: JSON.stringify(payload, null, 2),
+      });
+    } catch (error) {
+      appendDebugLog(
+        `Failed to share ${title}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  };
+
   // Fires on every render — confirms the screen mounted and received params.
   console.log('[AuthCallback] Screen rendered, requestId:', params.requestId ?? 'none', 'status:', params.status ?? 'none');
 
@@ -461,7 +582,10 @@ export default function AuthCallbackScreen() {
         const presentation = params.presentation as string | undefined;
         const errorCode = params.errorCode as string | undefined;
         const errorMessage = params.errorMessage as string | undefined;
-        const voteMessage = (params.voteMessage as string | undefined) || '';
+        const voteHash = (params.voteHash as string | undefined) || '';
+        const holderSignatureFromResponse = (params.holderSignature as string | undefined) || '';
+        const holderPublicKeyFromResponse = (params.holderPublicKey as string | undefined) || '';
+        const holderAlgFromResponse = (params.holderAlg as string | undefined) || '';
         const requestedClaimsRaw = params.requestedClaims as string | undefined;
         const requestedAttributes = parseStringArray(requestedClaimsRaw);
 
@@ -484,18 +608,22 @@ export default function AuthCallbackScreen() {
           return acc;
         }, {});
 
+        const holderSignatureRaw = holderSignatureFromResponse || kbJwtParsed?.signature || '';
+        const holderPublicKeyRaw = holderPublicKeyFromResponse || toPublicKeyReference(kbJwtParsed);
+
         const parsedCircuitInput: ParsedCircuitInput = {
           requestedAttributes,
-          voteMessage,
+          voteHashHex: voteHash,
           // Signatures are the JWS signature segments from issuer JWT / key-binding JWT.
           issuerSignature: issuerJwtParsed?.signature ?? '',
           issuerPublicKey: toPublicKeyReference(issuerJwtParsed),
           issuerAlg: toAlg(issuerJwtParsed),
-          holderSignature: kbJwtParsed?.signature ?? '',
-          holderPublicKey: toPublicKeyReference(kbJwtParsed),
-          holderAlg: toAlg(kbJwtParsed),
+          holderSignature: splitHolderSignature(holderSignatureRaw),
+          holderPublicKey: splitHolderPublicKey(holderPublicKeyRaw),
+          holderAlg: holderAlgFromResponse || toAlg(kbJwtParsed),
           requestedDisclosedClaims,
         };
+        const circuitInput: CircuitInput = null;
 
         appendDebugLog(
           `[AuthCallback] Processing callback params requestId=${requestId || 'N/A'} status=${status || 'unknown'} hasPresentation=${Boolean(presentation)} hasError=${Boolean(errorCode)} attrs=${requestedAttributes.length}`,
@@ -506,6 +634,7 @@ export default function AuthCallbackScreen() {
           requestId: requestId || 'N/A',
           receivedAt: new Date().toLocaleString(),
           parsedCircuitInput,
+          circuitInput,
           errorCode: errorCode || undefined,
           errorMessage: errorMessage || undefined,
         };
@@ -515,6 +644,10 @@ export default function AuthCallbackScreen() {
         appendDebugLog(`Request ID=${receivedData.requestId}`);
         appendDebugLog(`Resolved requested claims=${Object.keys(requestedDisclosedClaims).length}`);
         appendDebugLog(`Error code=${receivedData.errorCode || 'N/A'}`);
+
+        // Mirror payloads in terminal logs to ease copy/paste and offline inspection.
+        logJsonToTerminal('Raw Response', receivedData.parsedCircuitInput);
+        logJsonToTerminal('Circuit Input', receivedData.circuitInput);
 
         setCallbackData(receivedData);
 
@@ -537,7 +670,10 @@ export default function AuthCallbackScreen() {
     params.status,
     params.requestId,
     params.presentation,
-    params.voteMessage,
+    params.voteHash,
+    params.holderSignature,
+    params.holderPublicKey,
+    params.holderAlg,
     params.nonceChallenge,
     params.requestedClaims,
     params.errorCode,
@@ -584,11 +720,24 @@ export default function AuthCallbackScreen() {
                   <Text style={styles.dataValue}>{callbackData.receivedAt}</Text>
                 </View>
 
-                <Text style={styles.dataTitle}>Parsed Circuit Input</Text>
+                <Text style={styles.dataTitle}>Raw Response</Text>
                 <View style={styles.credentialBox}>
                   <Text style={styles.credentialText}>
                     {JSON.stringify(callbackData.parsedCircuitInput, null, 2)}
                   </Text>
+                </View>
+                <View style={styles.actionsRow}>
+                  <Pressable
+                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                    onPress={() => sharePayload('Raw Response', callbackData.parsedCircuitInput)}
+                  >
+                    <Text style={styles.secondaryButtonText}>Share Raw Response</Text>
+                  </Pressable>
+                </View>
+
+                <Text style={styles.dataTitle}>Circuit Input</Text>
+                <View style={styles.credentialBox}>
+                  <Text style={styles.credentialText}>{''}</Text>
                 </View>
 
                 {callbackData.errorCode && (
@@ -711,6 +860,26 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#333',
     fontFamily: 'monospace',
+  },
+  actionsRow: {
+    marginBottom: 12,
+    alignItems: 'flex-end',
+  },
+  secondaryButton: {
+    backgroundColor: '#EEF5FF',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#B7D4FF',
+  },
+  secondaryButtonPressed: {
+    opacity: 0.85,
+  },
+  secondaryButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#0A4FB5',
   },
   okButton: {
     marginTop: 20,

@@ -1,4 +1,4 @@
-import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import React, { useMemo, useState } from "react";
 import {
     Pressable,
@@ -295,8 +295,8 @@ export default function Explore() {
             <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
                 <View style={styles.searchRow}>
                     <View style={styles.searchBox}>
-                        <FontAwesome6
-                            name="magnifying-glass"
+                        <MaterialIcons
+                            name="search"
                             size={16}
                             color={palette.textSecondary}
                         />
