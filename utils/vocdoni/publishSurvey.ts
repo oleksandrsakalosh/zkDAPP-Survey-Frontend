@@ -3,7 +3,7 @@ import 'react-native-get-random-values';
 import { Wallet } from '@ethersproject/wallet';
 
 import { SurveyDraft, SurveyQuestion } from '@/domain/models';
-import { createVocdoniClient } from '@/utils/vocdoni/sdk';
+import { ensureVocdoniAccount } from '@/utils/vocdoni/sdk';
 import { getOrCreateDeviceWallet } from '@/utils/vocdoni/wallet';
 
 const DEFAULT_DYNAMIC_CENSUS_SIZE = 25;
@@ -103,8 +103,8 @@ export const publishSurveyDraft = async (draft: SurveyDraft) => {
       voterCap: draft.voterCap,
     });
 
-    const wallet = await getOrCreateDeviceWallet();
-    const client = await createVocdoniClient(wallet);
+    const initialWallet = await getOrCreateDeviceWallet();
+    const { client, accountInfo, wallet, rotatedWallet, warning } = await ensureVocdoniAccount(initialWallet);
     const sdk = getVocdoniSdk();
     const { Election, ElectionStatus, PlainCensus } = sdk;
 
@@ -112,6 +112,8 @@ export const publishSurveyDraft = async (draft: SurveyDraft) => {
       address: wallet.address,
       clientApiUrl: client.url,
       explorerUrl: client.explorerUrl,
+      rotatedWallet,
+      warning: warning ?? null,
     });
 
     const dynamicCensusSize = resolveDynamicCensusSize(draft);
@@ -149,16 +151,9 @@ export const publishSurveyDraft = async (draft: SurveyDraft) => {
       endDate,
     });
 
-    const accountStartedAt = Date.now();
-    console.log('[publishSurvey] account:create:start', {
-      address: wallet.address,
-      startedAt: new Date(accountStartedAt).toISOString(),
-    });
-    const accountInfo = await client.createAccount();
     console.log('[publishSurvey] accountReady', {
       address: wallet.address,
       balance: accountInfo.balance,
-      durationMs: Date.now() - accountStartedAt,
     });
 
     const electionStartedAt = Date.now();
@@ -217,6 +212,8 @@ export const publishSurveyDraft = async (draft: SurveyDraft) => {
       censusSize: dynamicCensusSize,
       walletAddress: wallet.address,
       status: electionStatus,
+      rotatedWallet,
+      warning,
       durationMs: Date.now() - publishStartedAt,
     };
   } catch (error) {

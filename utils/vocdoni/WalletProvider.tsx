@@ -1,8 +1,7 @@
 import { Wallet } from '@ethersproject/wallet';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-import { createVocdoniClient } from '@/utils/vocdoni/sdk';
-import { getOrCreateDeviceWallet } from '@/utils/vocdoni/wallet';
+import { getOrCreateDeviceWallet, subscribeToDeviceWalletChanges } from '@/utils/vocdoni/wallet';
 
 type WalletContextValue = {
   wallet: Wallet | null;
@@ -29,16 +28,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const nextWallet = await getOrCreateDeviceWallet();
         console.log('[WalletProvider] loadWallet:walletResolved', {
           address: nextWallet.address,
-        });
-
-        const client = await createVocdoniClient(nextWallet);
-        console.log('[WalletProvider] loadWallet:accountInit:start', {
-          address: nextWallet.address,
-        });
-        const accountInfo = await client.createAccount();
-        console.log('[WalletProvider] loadWallet:accountInit:success', {
-          address: nextWallet.address,
-          balance: accountInfo.balance,
         });
 
         if (!isMounted) {
@@ -72,6 +61,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       console.log('[WalletProvider] loadWallet:cleanup');
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToDeviceWalletChanges((nextWallet) => {
+      console.log('[WalletProvider] walletChanged', {
+        address: nextWallet.address,
+      });
+
+      setWallet(nextWallet);
+      setWalletAddress(nextWallet.address);
+      setError(null);
+      setIsLoading(false);
+    });
+
+    return unsubscribe;
   }, []);
 
   return (

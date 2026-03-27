@@ -108,7 +108,9 @@ export default function SurveyBudgetStep() {
 
             Alert.alert(
                 "Survey published",
-                `Election ${publishedElection.electionId} created on Vocdoni DEV.`
+                publishedElection.rotatedWallet
+                    ? `Election ${publishedElection.electionId} created on Vocdoni DEV.\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
+                    : `Election ${publishedElection.electionId} created on Vocdoni DEV.`
             );
 
             router.replace("/(tabs)/mySurveys");

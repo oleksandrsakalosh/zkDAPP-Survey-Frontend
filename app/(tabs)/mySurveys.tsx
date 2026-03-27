@@ -172,7 +172,9 @@ export default function MySurveys() {
 
             Alert.alert(
                 "Vocdoni test survey created",
-                `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list.`
+                publishedElection.rotatedWallet
+                    ? `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list.\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
+                    : `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list.`
             );
         } catch (error) {
             Alert.alert(
