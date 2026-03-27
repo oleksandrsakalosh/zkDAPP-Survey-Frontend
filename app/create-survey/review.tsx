@@ -1,6 +1,7 @@
 import * as React from "react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
+    Alert,
     View,
     Text,
     TextInput,
@@ -15,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { palette } from "@/theme/palette";
 import { useSurveyDraft } from "@/utils/SurveyDraftContext";
+import { publishSurveyDraft } from "@/utils/vocdoni/publishSurvey";
 
 function money(n: number) {
     // 1050 -> "1,050.00"
@@ -22,8 +24,7 @@ function money(n: number) {
 }
 
 export default function SurveyBudgetStep() {
-    const progress = useMemo(() => 1, []); // 4/4
-    const { draft, setDraft } = useSurveyDraft();
+    const { draft, setDraft, resetDraft } = useSurveyDraft();
 
     const [rewardPerVoterText, setRewardPerVoterText] = useState(
         draft.rewardPerVoter != null ? String(draft.rewardPerVoter) : ""
@@ -32,6 +33,7 @@ export default function SurveyBudgetStep() {
         draft.voterCap != null ? String(draft.voterCap) : ""
     );
     const [submitAttempted, setSubmitAttempted] = useState(false);
+    const [isPublishing, setIsPublishing] = useState(false);
 
     const parseMoney = (s: string) => {
         const t = s.trim().replace(",", ".");
@@ -84,20 +86,45 @@ export default function SurveyBudgetStep() {
 
     const isValid = !rewardError && !capError;
 
-    const onPublish = () => {
+    const onPublish = async () => {
         setSubmitAttempted(true);
         if (!isValid) return;
-      
-        setDraft((p) => {
-            const next = {
-              ...p,
-              rewardPerVoter: rewardN === null ? null : rewardN,
-              voterCap: capN === null ? null : capN,
-            };
-            console.log("NEXT DRAFT:", next);
-            return next;
-          });
-      };
+
+        const nextDraft = {
+            ...draft,
+            rewardPerVoter: rewardN === null ? null : rewardN,
+            voterCap: capN === null ? null : capN,
+        };
+
+        setDraft(nextDraft);
+        console.log("[create-survey] publish:start", nextDraft);
+
+        try {
+            setIsPublishing(true);
+            const publishedElection = await publishSurveyDraft(nextDraft);
+
+            console.log("[create-survey] publish:success", publishedElection);
+            resetDraft();
+
+            Alert.alert(
+                "Survey published",
+                publishedElection.rotatedWallet
+                    ? `Election ${publishedElection.electionId} created on Vocdoni DEV.\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
+                    : `Election ${publishedElection.electionId} created on Vocdoni DEV.`
+            );
+
+            router.replace("/(tabs)/mySurveys");
+        } catch (error) {
+            console.error("[create-survey] publish:error", error);
+
+            Alert.alert(
+                "Publish failed",
+                error instanceof Error ? error.message : "Unable to publish survey to Vocdoni."
+            );
+        } finally {
+            setIsPublishing(false);
+        }
+    };
     return (
         <SafeAreaView style={styles.safe}>
             {/* Header */}
@@ -229,8 +256,14 @@ export default function SurveyBudgetStep() {
                     <Text style={styles.draftText}>Save as Draft</Text>
                 </Pressable>
 
-                <Pressable style={styles.publishBtn} onPress={onPublish}>
-                    <Text style={styles.publishText}>Publish</Text>
+                <Pressable
+                    style={[styles.publishBtn, isPublishing && styles.publishBtnDisabled]}
+                    onPress={onPublish}
+                    disabled={isPublishing}
+                >
+                    <Text style={styles.publishText}>
+                        {isPublishing ? "Publishing..." : "Publish"}
+                    </Text>
                 </Pressable>
             </View>
         </SafeAreaView>
@@ -384,6 +417,9 @@ const styles = StyleSheet.create({
         backgroundColor: palette.primary,
         alignItems: "center",
         justifyContent: "center",
+    },
+    publishBtnDisabled: {
+        opacity: 0.7,
     },
     publishText: { fontSize: 16, fontWeight: "900", color: palette.white },
     inputError: {

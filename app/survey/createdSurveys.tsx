@@ -9,6 +9,11 @@ import { palette } from "@/theme/palette";
 type Props = {
     surveys: CreatedSurveyCardData[];
     onCreateNew: () => void;
+    onQuickPublishTest: () => void;
+    isQuickPublishing?: boolean;
+    onQuickVoteTest: () => void;
+    canQuickVoteTest?: boolean;
+    isQuickVoting?: boolean;
     onManage: (id: string) => void;
     onEdit: (id: string) => void;
     onResults: (id: string) => void;
@@ -17,6 +22,11 @@ type Props = {
 export default function CreatedSurveys({
     surveys,
     onCreateNew,
+    onQuickPublishTest,
+    isQuickPublishing = false,
+    onQuickVoteTest,
+    canQuickVoteTest = false,
+    isQuickVoting = false,
     onManage,
     onEdit,
     onResults,
@@ -80,20 +90,70 @@ export default function CreatedSurveys({
 
             <View style={styles.stickyWrap}>
                 <Pressable
-                    onPress={onCreateNew}
+                    onPress={onQuickPublishTest}
+                    disabled={isQuickPublishing}
                     android_ripple={{ color: palette.primaryLight }}
                     style={({ pressed }) => [
                         styles.stickyBtn,
-                        pressed && styles.stickyBtnPressed,
+                        pressed && !isQuickPublishing && styles.stickyBtnPressed,
+                        isQuickPublishing && { opacity: 0.7 },
+                    ]}
+                >
+                    <MaterialIcons
+                        name="bolt"
+                        size={18}
+                        color={palette.white}
+                        style={styles.stickyIcon}
+                    />
+                    <Text style={styles.stickyText}>
+                        {isQuickPublishing ? "Publishing to Vocdoni..." : "Create Test Survey on Vocdoni"}
+                    </Text>
+                </Pressable>
+
+                <Pressable
+                    onPress={onQuickVoteTest}
+                    disabled={!canQuickVoteTest || isQuickVoting}
+                    android_ripple={{ color: palette.primaryLight }}
+                    style={({ pressed }) => [
+                        styles.secondaryBtn,
+                        pressed && canQuickVoteTest && !isQuickVoting && styles.secondaryBtnPressed,
+                        (!canQuickVoteTest || isQuickVoting) && styles.secondaryBtnDisabled,
+                    ]}
+                >
+                    <MaterialIcons
+                        name="how-to-vote"
+                        size={18}
+                        color={canQuickVoteTest ? palette.primary : palette.textMuted}
+                        style={styles.stickyIcon}
+                    />
+                    <Text
+                        style={[
+                            styles.secondaryText,
+                            !canQuickVoteTest && styles.secondaryTextDisabled,
+                        ]}
+                    >
+                        {isQuickVoting
+                            ? "Submitting Test Vote..."
+                            : canQuickVoteTest
+                                ? "Vote Latest Test Survey"
+                                : "Create Test Survey First"}
+                    </Text>
+                </Pressable>
+                <Pressable
+                    onPress={onCreateNew}
+                    android_ripple={{ color: palette.primaryLight }}
+                    style={({ pressed }) => [
+                        styles.secondaryBtn,
+                        pressed && styles.secondaryBtnPressed,
                     ]}
                 >
                     <MaterialIcons
                         name="add"
                         size={18}
-                        color={palette.white}
+                        color={palette.primary}
                         style={styles.stickyIcon}
                     />
-                    <Text style={styles.stickyText}>Create New Survey</Text>
+                    <Text style={styles.secondaryText}>Open Survey Builder</Text>
                 </Pressable>
             </View>
         </View>
@@ -108,7 +168,7 @@ const styles = StyleSheet.create({
     listContent: {
         paddingHorizontal: 16,
         paddingTop: 12,
-        paddingBottom: 110,
+        paddingBottom: 226,
     },
     sectionHeader: {
         marginTop: 6,
@@ -125,6 +185,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         paddingTop: 10,
         paddingBottom: 18,
+        gap: 10,
         backgroundColor: palette.background,
         borderTopWidth: 1,
         borderTopColor: palette.border,
@@ -149,5 +210,30 @@ const styles = StyleSheet.create({
         color: palette.white,
         fontSize: 16,
         fontWeight: "800",
+    },
+    secondaryBtn: {
+        height: 50,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.white,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+    },
+    secondaryBtnPressed: {
+        backgroundColor: palette.primaryNegative,
+    },
+    secondaryBtnDisabled: {
+        opacity: 0.7,
+    },
+    secondaryText: {
+        color: palette.primaryDark,
+        fontSize: 15,
+        fontWeight: "700",
+    },
+    secondaryTextDisabled: {
+        color: palette.textMuted,
     },
 });

@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { palette } from "@/theme/palette";
-import { Money } from "@/domain/models";
+import { Money, RewardStatus } from "@/domain/models";
 
 type Props = {
     id: string;
@@ -11,6 +11,7 @@ type Props = {
     category: string;
     date: string;
     reward?: Money | null;
+    rewardStatus?: RewardStatus;
 };
 
 export default function CompletedSurveyCard({
@@ -18,8 +19,13 @@ export default function CompletedSurveyCard({
     category,
     date,
     reward,
+    rewardStatus,
 }: Props) {
-    const isPaid = reward !== null && reward !== undefined && reward.amount > 0;
+    const isPaid = rewardStatus === "paid" && reward !== null && reward !== undefined && reward.amount > 0;
+    const isRecordedOnly =
+        rewardStatus === "not_applicable" ||
+        rewardStatus === "pending" ||
+        rewardStatus === "eligible";
 
     const handlePress = () => {};
 
@@ -40,6 +46,12 @@ export default function CompletedSurveyCard({
                         <View style={styles.paidBadge}>
                             <Text style={styles.paidText}>
                                 Reward paid  +{reward.amount.toFixed(2)} {reward.currency}
+                            </Text>
+                        </View>
+                    ) : isRecordedOnly ? (
+                        <View style={styles.recordedBadge}>
+                            <Text style={styles.recordedText}>
+                                Vote recorded on Vocdoni
                             </Text>
                         </View>
                     ) : (
@@ -105,6 +117,18 @@ const styles = StyleSheet.create({
     },
     paidText: {
         color: palette.success,
+        fontWeight: "500",
+        fontSize: 12,
+    },
+    recordedBadge: {
+        backgroundColor: palette.primaryNegative,
+        paddingVertical: 8,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        alignSelf: "flex-start",
+    },
+    recordedText: {
+        color: palette.primary,
         fontWeight: "500",
         fontSize: 12,
     },

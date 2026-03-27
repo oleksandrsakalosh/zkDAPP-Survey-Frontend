@@ -70,6 +70,7 @@ export default function ParticipatedSurveys({ surveys }: Props) {
                         title={item.title}
                         category={item.category}
                         date={item.votedAt}
+                        rewardStatus={item.rewardStatus}
                         reward={item.reward?.amount ? { amount: item.reward.amount, currency: item.reward.currency } : undefined}
                     />
                 )}
