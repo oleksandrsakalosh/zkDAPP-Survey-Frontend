@@ -1,7 +1,6 @@
 import { Tabs } from "expo-router";
 import * as React from "react";
 
-import FontAwesome6 from '@expo/vector-icons/FontAwesome6';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
@@ -27,7 +26,7 @@ export default function TabLayout() {
             name="explore"
             options={{
                 tabBarIcon: ({ color, size }) => (
-                    <FontAwesome6 name="magnifying-glass" size={size} color={color} />
+                    <MaterialIcons name="search" size={size} color={color} />
                 ),
                 tabBarLabel: "Explore",
                 headerShown: true,
@@ -56,7 +55,7 @@ export default function TabLayout() {
             name="profile"
             options={{
                 tabBarIcon: ({ color, size }) => (
-                    <FontAwesome6 name="address-card" size={size} color={color} />
+                    <MaterialIcons name="badge" size={size} color={color} />
                 ),
                 tabBarLabel: "Profile",
                 headerShown: true,

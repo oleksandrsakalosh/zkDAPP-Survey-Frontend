@@ -10,10 +10,10 @@ import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
-import FontAwesome6 from "@expo/vector-icons/FontAwesome6";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -111,7 +111,7 @@ export default function SuccessScreen() {
 
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity style={styles.homeBtn} onPress={handleBackToHome}>
-            <FontAwesome6 name="magnifying-glass" size={16} color={palette.white} />
+            <MaterialIcons name="search" size={16} color={palette.white} />
           <Text style={styles.homeBtnText}>Back to Explore</Text>
         </TouchableOpacity>
       </View>
