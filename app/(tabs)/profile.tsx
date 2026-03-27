@@ -12,12 +12,21 @@ import {
 
 import { palette } from "@/theme/palette";
 import RequestBuilder from "@/components/RequestBuilder";
+import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
+import { formatWalletAddress } from "@/utils/vocdoni/wallet";
 
 export default function Profile() {
     const [newSurveysEnabled, setNewSurveysEnabled] = useState(true);
     const [rewardUpdatesEnabled, setRewardUpdatesEnabled] = useState(true);
     const [activityEnabled, setActivityEnabled] = useState(false);
     const [showRequestBuilder, setShowRequestBuilder] = useState(false);
+    const { walletAddress, isLoading, error } = useDeviceWallet();
+    const walletDisplay = walletAddress ? formatWalletAddress(walletAddress) : "Wallet unavailable";
+    const walletSubtitle = isLoading
+        ? "Creating your device wallet..."
+        : error
+            ? "Wallet initialization failed"
+            : walletAddress ?? "Wallet unavailable";
 
     return (
             <ScrollView
@@ -29,7 +38,9 @@ export default function Profile() {
                 <View style={styles.profileCard}>
                     <Text style={styles.profileName}>Tralalela Tralala</Text>
                     <View style={styles.walletRow}>
-                        <Text style={styles.walletText}>0x3f4...e91c</Text>
+                        <Text style={styles.walletText}>
+                            {isLoading ? "Preparing wallet..." : walletDisplay}
+                        </Text>
                         <MaterialIcons name="content-copy" size={14} color={palette.white50} />
                     </View>
 
@@ -57,7 +68,7 @@ export default function Profile() {
                     />
                     <SettingRow
                         title="Connected Wallet"
-                        subtitle="0x3f4a...e91c"
+                        subtitle={walletSubtitle}
                     />
                 </View>
 

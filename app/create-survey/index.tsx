@@ -134,13 +134,6 @@ export default function CreateSurvey() {
     setPickerOpen(false);
   };
 
-  const handleDescriptionSizeChange = (
-    event: NativeSyntheticEvent<TextInputContentSizeChangeEventData>
-  ) => {
-    const nextHeight = Math.max(120, Math.ceil(event.nativeEvent.contentSize.height) + 24);
-    setDescriptionHeight(nextHeight);
-  };
-
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
@@ -197,10 +190,8 @@ export default function CreateSurvey() {
               descError && styles.inputError,
             ]}
             multiline
-            scrollEnabled={false}
             value={description}
             onChangeText={setDesc}
-            onContentSizeChange={handleDescriptionSizeChange}
             onBlur={() => setTouched((p) => ({ ...p, description: true }))}
           />
           {descError && <Text style={styles.errorText}>Required</Text>}
