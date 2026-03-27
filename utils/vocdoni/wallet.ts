@@ -3,7 +3,6 @@ import { Wallet } from '@ethersproject/wallet';
 import * as SecureStore from 'expo-secure-store';
 
 const DEVICE_WALLET_PRIVATE_KEY_STORAGE_KEY = 'vocdoni.deviceWallet.privateKey';
-const walletChangeListeners = new Set<(wallet: Wallet) => void>();
 
 const canUseBrowserStorage = () =>
   typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -52,10 +51,6 @@ const persistPrivateKey = async (privateKey: string): Promise<void> => {
   });
 };
 
-const notifyWalletChanged = (wallet: Wallet) => {
-  walletChangeListeners.forEach((listener) => listener(wallet));
-};
-
 const createAndPersistDeviceWallet = async (): Promise<Wallet> => {
   console.log('[device-wallet] createAndPersistDeviceWallet:start');
   const wallet = Wallet.createRandom();
@@ -65,7 +60,6 @@ const createAndPersistDeviceWallet = async (): Promise<Wallet> => {
   });
 
   await persistPrivateKey(wallet.privateKey);
-  notifyWalletChanged(wallet);
 
   console.log('[device-wallet] createAndPersistDeviceWallet:success', {
     address: wallet.address,
@@ -101,23 +95,6 @@ export const getOrCreateDeviceWallet = async (): Promise<Wallet> => {
     console.error('[device-wallet] getOrCreateDeviceWallet:error', error);
     throw error;
   }
-};
-
-export const replaceDeviceWallet = async (): Promise<Wallet> => {
-  console.log('[device-wallet] replaceDeviceWallet:start');
-  const wallet = await createAndPersistDeviceWallet();
-  console.log('[device-wallet] replaceDeviceWallet:success', {
-    address: wallet.address,
-  });
-  return wallet;
-};
-
-export const subscribeToDeviceWalletChanges = (listener: (wallet: Wallet) => void) => {
-  walletChangeListeners.add(listener);
-
-  return () => {
-    walletChangeListeners.delete(listener);
-  };
 };
 
 export const formatWalletAddress = (address: string) =>

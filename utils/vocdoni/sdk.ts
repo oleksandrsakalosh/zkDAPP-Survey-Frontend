@@ -1,6 +1,6 @@
 import { Wallet } from '@ethersproject/wallet';
 
-import { getOrCreateDeviceWallet, replaceDeviceWallet } from '@/utils/vocdoni/wallet';
+import { getOrCreateDeviceWallet } from '@/utils/vocdoni/wallet';
 
 // The SDK is loaded lazily to match the React Native runtime constraints in this app.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -90,24 +90,27 @@ export const ensureVocdoniAccount = async (wallet: Wallet) => {
       message: createError.message,
     });
 
-    const rotatedWallet = await replaceDeviceWallet();
-    const rotatedClient = await createVocdoniClient(rotatedWallet);
-    const accountInfo = await rotatedClient.createAccount({ sik: false });
+    try {
+      const accountInfo = await client.fetchAccount();
 
-    console.log('[vocdoni-sdk] ensureAccount:createdWithRotatedWallet', {
-      previousAddress: wallet.address,
-      address: rotatedWallet.address,
-      balance: accountInfo.balance,
-    });
+      console.log('[vocdoni-sdk] ensureAccount:existingAfterCooldownError', {
+        address: wallet.address,
+        balance: accountInfo.balance,
+      });
 
-    return {
-      client: rotatedClient,
-      accountInfo,
-      created: true,
-      wallet: rotatedWallet,
-      rotatedWallet: true,
-      warning: formatFaucetCooldownMessage(createError),
-    };
+      return {
+        client,
+        accountInfo,
+        created: false,
+        wallet,
+        rotatedWallet: false,
+        warning: formatFaucetCooldownMessage(createError),
+      };
+    } catch {
+      throw new Error(
+        `${formatFaucetCooldownMessage(createError)} This app kept the same wallet and did not create a new one. Survey creation cannot continue until this wallet has a Vocdoni account.`
+      );
+    }
   }
 };
 

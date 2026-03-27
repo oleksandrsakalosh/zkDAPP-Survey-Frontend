@@ -1,7 +1,7 @@
 import { Wallet } from '@ethersproject/wallet';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-import { getOrCreateDeviceWallet, subscribeToDeviceWalletChanges } from '@/utils/vocdoni/wallet';
+import { getOrCreateDeviceWallet } from '@/utils/vocdoni/wallet';
 
 type WalletContextValue = {
   wallet: Wallet | null;
@@ -61,21 +61,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       console.log('[WalletProvider] loadWallet:cleanup');
       isMounted = false;
     };
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = subscribeToDeviceWalletChanges((nextWallet) => {
-      console.log('[WalletProvider] walletChanged', {
-        address: nextWallet.address,
-      });
-
-      setWallet(nextWallet);
-      setWalletAddress(nextWallet.address);
-      setError(null);
-      setIsLoading(false);
-    });
-
-    return unsubscribe;
   }, []);
 
   return (
