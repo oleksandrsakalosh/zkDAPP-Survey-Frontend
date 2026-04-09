@@ -18,7 +18,7 @@ export type RegistrySurveyRecord = {
   createdAt: number;
 };
 
-const REGISTRY_RPC_URL = process.env.EXPO_PUBLIC_REGISTRY_RPC_URL?.trim() || "";
+const REGISTRY_RPC_URL = process.env.EXPO_PUBLIC_REGISTRY_RPC_URL?.trim() || "https://ethereum-sepolia-rpc.publicnode.com";
 
 let sharedProvider: JsonRpcProvider | null = null;
 

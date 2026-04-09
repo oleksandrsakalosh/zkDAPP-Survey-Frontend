@@ -1,8 +1,10 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useRouter } from "expo-router";
-import React from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+    ActivityIndicator,
     Pressable,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
@@ -12,87 +14,24 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import CompletedSurveyCard from "@/components/completedSurveyCard";
 import SurveyCard from "@/components/surveyCard";
-import type { HomeDashboardData } from "@/domain/models";
+import type { ParticipatedSurveySummary, SurveyCardData, SurveySummary } from "@/domain/models";
 import { palette } from "@/theme/palette";
-
-const HOME_DASHBOARD: HomeDashboardData = {
-    activeSurvey: {
-        id: "c1",
-        title: "Consumer Spending Habits Q1 2025",
-        description: "Q1 consumer trends",
-        status: "active",
-        categories: [{ id: "cat-finance", label: "Finance" }],
-        progress: {
-            responseCount: 247,
-            targetResponses: 500,
-        },
-        budget: {
-            rewardPerVoter: {
-                amount: 1,
-                currency: "USD",
-            },
-        },
-        timeInfo: {
-            displayLabel: "Mar 15, 2025",
-        },
-    },
-    recentlyParticipated: [
-        {
-            id: "cp-1",
-            title: "Healthcare Access Study",
-            category: "Medical",
-            votedAt: "Mar 10",
-            rewardStatus: "paid",
-            reward: { amount: 2, currency: "USD" },
-        },
-        {
-            id: "cp-2",
-            title: "Healthcare Access Study",
-            category: "Medical",
-            votedAt: "Mar 10",
-            rewardStatus: "paid",
-            reward: { amount: 2, currency: "USD" },
-        },
-        {
-            id: "cp-3",
-            title: "Healthcare Access Study",
-            category: "Medical",
-            votedAt: "Mar 10",
-            rewardStatus: "paid",
-            reward: { amount: 2, currency: "USD" },
-        },
-    ],
-    availableForYou: [
-        {
-            id: "available-1",
-            title: "Prescription Drug Affordability",
-            description:
-                "Share your experience with prescription costs and insurance coverage. Anonymous & secure.",
-            status: "active",
-            categories: [
-                { id: "cat-health", label: "Health" },
-                { id: "cat-finance", label: "Finance" },
-            ],
-            progress: {
-                responseCount: 203,
-                targetResponses: 400,
-            },
-            budget: {
-                rewardPerVoter: { amount: 3.5, currency: "USD" },
-            },
-            estimatedMinutes: 8,
-            eligibility: {
-                decision: "qualify",
-                matchedRequirements: [],
-                failedRequirements: [],
-            },
-            listVariant: "available",
-        },
-    ],
-};
+import { RegisteredSurveyFeedItem, loadRegisteredSurveyFeed } from "@/utils/registry/feed";
+import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
 
 function formatDollars(value: number) {
     return `$${value.toFixed(2)}`;
+}
+
+function formatShortDate(dateIso?: string | null) {
+    if (!dateIso) {
+        return "-";
+    }
+
+    return new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+    }).format(new Date(dateIso));
 }
 
 function SectionHeader({
@@ -115,16 +54,115 @@ function SectionHeader({
     );
 }
 
+function EmptySection({ text }: { text: string }) {
+    return (
+        <View style={styles.emptySection}>
+            <Text style={styles.emptySectionText}>{text}</Text>
+        </View>
+    );
+}
+
+const mapFeedItemToParticipated = (item: RegisteredSurveyFeedItem): ParticipatedSurveySummary => ({
+    id: item.registry.electionId,
+    title: item.detail.title,
+    category: item.detail.categories[0]?.label ?? "General",
+    votedAt:
+        item.detail.timeInfo?.opensAt ??
+        new Date(item.registry.createdAt * 1000).toISOString(),
+    rewardStatus: "not_applicable",
+    reward: item.detail.budget?.rewardPerVoter,
+});
+
 export default function Home() {
     const router = useRouter();
-    const activeSurvey = HOME_DASHBOARD.activeSurvey;
+    const { walletAddress, isLoading: isWalletLoading } = useDeviceWallet();
+
+    const [feedItems, setFeedItems] = useState<RegisteredSurveyFeedItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
+    const loadDashboard = useCallback(async (mode: "initial" | "refresh" = "initial") => {
+        try {
+            if (mode === "initial") {
+                setIsLoading(true);
+            } else {
+                setIsRefreshing(true);
+            }
+
+            const nextFeed = await loadRegisteredSurveyFeed({
+                excludeClosed: false,
+                excludeVoted: false,
+            });
+            setFeedItems(nextFeed);
+        } catch (error) {
+            console.error("[home] dashboard:load:error", error);
+            setFeedItems([]);
+        } finally {
+            if (mode === "initial") {
+                setIsLoading(false);
+            } else {
+                setIsRefreshing(false);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (isWalletLoading || !walletAddress) {
+            return;
+        }
+
+        loadDashboard();
+    }, [isWalletLoading, loadDashboard, walletAddress]);
+
+    const myCreatedItems = useMemo(
+        () =>
+            walletAddress
+                ? feedItems.filter(
+                    (item) => item.registry.creator.toLowerCase() === walletAddress.toLowerCase()
+                )
+                : [],
+        [feedItems, walletAddress]
+    );
+
+    const votedItems = useMemo(
+        () => feedItems.filter((item) => item.detail.hasVoted === true).slice(0, 3),
+        [feedItems]
+    );
+
+    const availableForYou = useMemo<SurveyCardData[]>(
+        () =>
+            walletAddress
+                ? feedItems
+                    .filter(
+                        (item) =>
+                            item.registry.creator.toLowerCase() !== walletAddress.toLowerCase() &&
+                            item.detail.timeInfo?.isOpen !== false &&
+                            item.detail.hasVoted !== true
+                    )
+                    .slice(0, 1)
+                    .map((item) => item.card)
+                : [],
+        [feedItems, walletAddress]
+    );
+
+    const activeSurvey = useMemo<SurveySummary | undefined>(
+        () => myCreatedItems[0]?.detail,
+        [myCreatedItems]
+    );
+
+    const recentlyParticipated = useMemo<ParticipatedSurveySummary[]>(
+        () => votedItems.map(mapFeedItemToParticipated),
+        [votedItems]
+    );
+
     const activeResponses = activeSurvey?.progress?.responseCount ?? 0;
     const activeTarget = activeSurvey?.progress?.targetResponses ?? 0;
     const activeRewardPerVoter = activeSurvey?.budget?.rewardPerVoter?.amount ?? 0;
     const activeCategory = activeSurvey?.categories?.[0]?.label ?? "General";
-    const activeClosesAt = activeSurvey?.timeInfo?.displayLabel ?? "-";
-    const recentlyParticipated = HOME_DASHBOARD.recentlyParticipated ?? [];
-    const availableForYou = HOME_DASHBOARD.availableForYou ?? []
+    const activeClosesAt =
+        activeSurvey?.timeInfo?.closesAt
+            ? formatShortDate(activeSurvey.timeInfo.closesAt)
+            : activeSurvey?.timeInfo?.displayLabel ?? "-";
     const progressPercent = Math.min(
         100,
         Math.max(0, Math.round((activeResponses / Math.max(activeTarget, 1)) * 100))
@@ -136,6 +174,13 @@ export default function Home() {
                 style={styles.screen}
                 contentContainerStyle={styles.content}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={() => loadDashboard("refresh")}
+                        tintColor={palette.primary}
+                    />
+                }
             >
                 <View style={styles.greetingBlock}>
                     <Text style={styles.greeting}>
@@ -144,94 +189,116 @@ export default function Home() {
                     <Text style={styles.subGreeting}>Your survey dashboard</Text>
                 </View>
 
-                <SectionHeader
-                    title="My Active Survey"
-                    action="View all"
-                    onPress={() =>
-                        router.push({
-                            pathname: "/(tabs)/mySurveys",
-                            params: { tab: "created" },
-                        })
-                    }
-                />
-
-                <View style={styles.activeCard}>
-                    <Text style={styles.activeTitle}>{activeSurvey?.title ?? "-"}</Text>
-                    <Text style={styles.activeSubtitle}>
-                        {activeCategory} - Closes {activeClosesAt}
-                    </Text>
-
-                    <View style={styles.metricsRow}>
-                        <View style={styles.metricItem}>
-                            <Text style={styles.metricValue}>{activeResponses}</Text>
-                            <Text style={styles.metricLabel}>Responses</Text>
-                        </View>
-                        <View style={styles.metricItem}>
-                            <Text style={styles.metricValue}>{activeTarget}</Text>
-                            <Text style={styles.metricLabel}>Target</Text>
-                        </View>
-                        <View style={styles.metricItem}>
-                            <Text style={styles.metricValue}>
-                                {formatDollars(activeRewardPerVoter)}
-                            </Text>
-                            <Text style={styles.metricLabel}>Per Voter</Text>
-                        </View>
+                {isLoading ? (
+                    <View style={styles.loadingCard}>
+                        <ActivityIndicator color={palette.primary} />
+                        <Text style={styles.loadingText}>Loading dashboard...</Text>
                     </View>
+                ) : (
+                    <>
+                        <SectionHeader
+                            title="My Active Survey"
+                            action="View all"
+                            onPress={() =>
+                                router.push({
+                                    pathname: "/(tabs)/mySurveys",
+                                    params: { tab: "created" },
+                                })
+                            }
+                        />
 
-                    <View style={styles.progressTrack}>
-                        <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
-                    </View>
+                        {activeSurvey ? (
+                            <View style={styles.activeCard}>
+                                <Text style={styles.activeTitle}>{activeSurvey.title}</Text>
+                                <Text style={styles.activeSubtitle}>
+                                    {activeCategory} - Closes {activeClosesAt}
+                                </Text>
 
-                    <Text style={styles.progressLabelInline}>
-                        {progressPercent}% of voter cap reached
-                    </Text>
+                                <View style={styles.metricsRow}>
+                                    <View style={styles.metricItem}>
+                                        <Text style={styles.metricValue}>{activeResponses}</Text>
+                                        <Text style={styles.metricLabel}>Responses</Text>
+                                    </View>
+                                    <View style={styles.metricItem}>
+                                        <Text style={styles.metricValue}>{activeTarget}</Text>
+                                        <Text style={styles.metricLabel}>Target</Text>
+                                    </View>
+                                    <View style={styles.metricItem}>
+                                        <Text style={styles.metricValue}>
+                                            {formatDollars(activeRewardPerVoter)}
+                                        </Text>
+                                        <Text style={styles.metricLabel}>Per Voter</Text>
+                                    </View>
+                                </View>
 
-                    <Pressable
-                        style={styles.manageButton}
-                        onPress={() =>
-                            router.push(`/survey/manage/${activeSurvey?.id}`)
-                        }
-                    >
-                        <Text style={styles.manageButtonText}>Manage Survey</Text>
-                    </Pressable>
-                </View>
+                                <View style={styles.progressTrack}>
+                                    <View style={[styles.progressFill, { width: `${progressPercent}%` }]} />
+                                </View>
 
-                <SectionHeader
-                    title="Recently Participated"
-                    action="See all"
-                    onPress={() =>
-                        router.push({
-                            pathname: "/(tabs)/mySurveys",
-                            params: { tab: "participated" },
-                        })
-                    }
-                />
+                                <Text style={styles.progressLabelInline}>
+                                    {progressPercent}% of voter cap reached
+                                </Text>
 
-                {recentlyParticipated.map((survey) => (
-                    <CompletedSurveyCard
-                        key={survey.id}
-                        id={survey.id}
-                        title={survey.title}
-                        category={survey.category ?? "General"}
-                        date={survey.votedAt}
-                        reward={survey.reward}
-                    />
-                ))}
+                                <Pressable
+                                    style={styles.manageButton}
+                                    onPress={() =>
+                                        router.push(`/survey/manage/${activeSurvey.id}` as any)
+                                    }
+                                >
+                                    <Text style={styles.manageButtonText}>Manage Survey</Text>
+                                </Pressable>
+                            </View>
+                        ) : (
+                            <EmptySection text="No created surveys yet. Create one to see it here." />
+                        )}
 
-                <SectionHeader
-                    title="Available for You"
-                    action="Browse all"
-                    onPress={() => router.push("/(tabs)/explore")}
-                />
+                        <SectionHeader
+                            title="Recently Participated"
+                            action="See all"
+                            onPress={() =>
+                                router.push({
+                                    pathname: "/(tabs)/mySurveys",
+                                    params: { tab: "participated" },
+                                })
+                            }
+                        />
 
-                {availableForYou.map((survey) => (
-                    <SurveyCard
-                        key={survey.id}
-                        survey={survey}
-                        voteLabel="Details"
-                        onVote={(id) => router.push(`/voting/${id}` as any)}
-                    />
-                ))}
+                        {recentlyParticipated.length > 0 ? (
+                            recentlyParticipated.map((survey) => (
+                                <CompletedSurveyCard
+                                    key={survey.id}
+                                    id={survey.id}
+                                    title={survey.title}
+                                    category={survey.category ?? "General"}
+                                    date={formatShortDate(survey.votedAt)}
+                                    reward={survey.reward}
+                                    rewardStatus={survey.rewardStatus}
+                                />
+                            ))
+                        ) : (
+                            <EmptySection text="No recent votes yet. Surveys you vote on will appear here." />
+                        )}
+
+                        <SectionHeader
+                            title="Available for You"
+                            action="Browse all"
+                            onPress={() => router.push("/(tabs)/explore")}
+                        />
+
+                        {availableForYou.length > 0 ? (
+                            availableForYou.map((survey) => (
+                                <SurveyCard
+                                    key={survey.id}
+                                    survey={survey}
+                                    voteLabel="Details"
+                                    onVote={(id) => router.push(`/voting/${id}` as any)}
+                                />
+                            ))
+                        ) : (
+                            <EmptySection text="No available surveys right now. Pull to refresh and check again." />
+                        )}
+                    </>
+                )}
             </ScrollView>
         </SafeAreaView>
     );
@@ -267,6 +334,19 @@ const styles = StyleSheet.create({
         marginTop: 2,
         fontSize: 22 / 2,
         color: palette.textSecondary,
+    },
+    loadingCard: {
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.background,
+        paddingVertical: 24,
+        alignItems: "center",
+        gap: 10,
+    },
+    loadingText: {
+        color: palette.textSecondary,
+        fontSize: 14,
     },
     sectionHeader: {
         marginBottom: 10,
@@ -350,5 +430,20 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: "700",
         color: palette.primary,
+    },
+    emptySection: {
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.background,
+        paddingHorizontal: 16,
+        paddingVertical: 18,
+        marginBottom: 16,
+    },
+    emptySectionText: {
+        color: palette.textSecondary,
+        fontSize: 14,
+        textAlign: "center",
+        lineHeight: 20,
     },
 });

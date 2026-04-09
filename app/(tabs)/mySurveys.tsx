@@ -1,85 +1,29 @@
-import React, { useEffect, useState } from "react";
-import { Alert, Dimensions, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+    Alert,
+    Dimensions,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
 
 import CreatedSurveys from "@/app/survey/createdSurveys";
 import ParticipatedSurveys from "@/app/survey/participatedSurveys";
-import { CreatedSurveyCardData, ParticipatedSurveySummary, SurveyDraft } from "@/domain/models";
+import {
+    CreatedSurveyCardData,
+    ParticipatedSurveySummary,
+    SurveyDraft,
+} from "@/domain/models";
 import { palette } from "@/theme/palette";
 import { router, useLocalSearchParams } from "expo-router";
-import { upsertStoredCreatedSurvey, loadStoredCreatedSurveys } from "@/utils/localCreatedSurveys";
 import { registerSurveyInRegistry } from "@/utils/registry/client";
+import { loadRegisteredSurveyFeed, RegisteredSurveyFeedItem } from "@/utils/registry/feed";
+import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
 import { publishSurveyDraft } from "@/utils/vocdoni/publishSurvey";
 import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
 
 const { width } = Dimensions.get("window");
-
-const INITIAL_CREATED_SURVEYS: CreatedSurveyCardData[] = [
-    {
-        id: "c1",
-        title: "Healthcare Access Study",
-        category: "Medical",
-        status: "active",
-        rewardPerVoter: 2,
-        endsAt: "Mar 10",
-        responsesCurrent: 500,
-        responsesTarget: 250,
-        spent: 364,
-    },
-    {
-        id: "c2",
-        title: "AI Product Attitudes",
-        category: "Technology",
-        status: "active",
-        rewardPerVoter: 1.5,
-        endsAt: "Mar 8",
-        responsesCurrent: 96,
-        responsesTarget: 150,
-        spent: 144,
-    },
-    {
-        id: "c3",
-        title: "Sustainable Shopping Habits",
-        category: "Environment",
-        status: "draft",
-        rewardPerVoter: 0.75,
-        responsesCurrent: 0,
-        responsesTarget: 200,
-        budget: 150,
-    },
-    {
-        id: "c4",
-        title: "Remote Work Satisfaction",
-        category: "Workplace",
-        status: "results",
-        rewardPerVoter: 1.25,
-        endsAt: "Feb 1",
-        responsesCurrent: 468,
-        responsesTarget: 300,
-        spent: 375,
-        totalSpent: 375,
-    },
-    {
-        id: "c5",
-        title: "Remote Work Satisfaction",
-        category: "Workplace",
-        status: "results",
-        rewardPerVoter: 1.25,
-        endsAt: "Feb 1",
-        responsesCurrent: 300,
-        responsesTarget: 300,
-        spent: 375,
-        totalSpent: 375,
-    },
-];
-
-const INITIAL_PARTICIPATED_SURVEYS: ParticipatedSurveySummary[] = [
-    { id: "1", title: "Healthcare Access Study", category: "Medical", votedAt: "Mar 10", rewardStatus: "paid", reward: { amount: 2.0, currency: "USD" } },
-    { id: "2", title: "AI Product Attitudes", category: "Technology", votedAt: "Mar 8", rewardStatus: "paid", reward: { amount: 1.5, currency: "USD" } },
-    { id: "3", title: "Eco-Conscious Buying", category: "Environment", votedAt: "Mar 6", rewardStatus: "unpaid", reward: { amount: 0, currency: "USD" } },
-    { id: "4", title: "Public Transit Feedback", category: "Civic", votedAt: "Mar 4", rewardStatus: "paid", reward: { amount: 0.8, currency: "USD" } },
-    { id: "5", title: "Crypto Wallet UX", category: "Technology", votedAt: "Mar 2", rewardStatus: "paid", reward: { amount: 1.2, currency: "USD" } },
-    { id: "6", title: "Healthy Eating Habits", category: "Lifestyle", votedAt: "Feb 28", rewardStatus: "unpaid", reward: { amount: 0, currency: "USD" } },
-];
 
 const formatShortDate = (dateIso: string) =>
     new Intl.DateTimeFormat("en-US", {
@@ -99,7 +43,7 @@ const buildQuickVocdoniTestDraft = (): SurveyDraft => {
         endDate: endDate.toISOString(),
         tags: ["vocdoni", "test"],
         category: "Vocdoni DEV",
-        rewardPerVoter: 0,
+        rewardPerVoter: 1,
         voterCap: 5,
         requirements: [],
         questions: [
@@ -118,8 +62,30 @@ const buildQuickVocdoniTestDraft = (): SurveyDraft => {
     };
 };
 
+const mapFeedItemToCreatedSurvey = (item: RegisteredSurveyFeedItem): CreatedSurveyCardData => ({
+    id: item.registry.electionId,
+    title: item.detail.title,
+    category: item.detail.categories[0]?.label ?? "General",
+    status: item.detail.status,
+    rewardPerVoter: item.detail.budget?.rewardPerVoter?.amount ?? 0,
+    endsAt: item.detail.timeInfo?.closesAt ? formatShortDate(item.detail.timeInfo.closesAt) : null,
+    responsesCurrent: item.detail.progress?.responseCount ?? 0,
+    responsesTarget: item.detail.progress?.targetResponses ?? 0,
+    spent: 0,
+});
+
+const mapFeedItemToParticipatedSurvey = (item: RegisteredSurveyFeedItem): ParticipatedSurveySummary => ({
+    id: item.registry.electionId,
+    title: item.detail.title,
+    category: item.detail.categories[0]?.label ?? "General",
+    votedAt: item.detail.timeInfo?.opensAt ?? new Date(item.registry.createdAt * 1000).toISOString(),
+    rewardStatus: "not_applicable",
+    reward: item.detail.budget?.rewardPerVoter,
+});
+
 export default function MySurveys() {
     const params = useLocalSearchParams<{ tab?: string | string[] }>();
+    const { walletAddress, isLoading: isWalletLoading } = useDeviceWallet();
 
     const normalizeTab = (value?: string | string[]): "created" | "participated" => {
         const rawValue = Array.isArray(value) ? value[0] : value;
@@ -129,12 +95,13 @@ export default function MySurveys() {
     const [activeTab, setActiveTab] = useState<"created" | "participated">(
         normalizeTab(params.tab)
     );
-    const [createdSurveys, setCreatedSurveys] = useState<CreatedSurveyCardData[]>(INITIAL_CREATED_SURVEYS);
-    const [participatedSurveys, setParticipatedSurveys] = useState<ParticipatedSurveySummary[]>(INITIAL_PARTICIPATED_SURVEYS);
+    const [registryFeed, setRegistryFeed] = useState<RegisteredSurveyFeedItem[]>([]);
     const [publishedExplorerUrls, setPublishedExplorerUrls] = useState<Record<string, string>>({});
     const [publishedRegistryTxHashes, setPublishedRegistryTxHashes] = useState<Record<string, string>>({});
     const [submittedVoteIds, setSubmittedVoteIds] = useState<Record<string, string>>({});
     const [latestPublishedTestSurveyId, setLatestPublishedTestSurveyId] = useState<string | null>(null);
+    const [isRegistryLoading, setIsRegistryLoading] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [isQuickPublishing, setIsQuickPublishing] = useState(false);
     const [isQuickVoting, setIsQuickVoting] = useState(false);
 
@@ -142,28 +109,59 @@ export default function MySurveys() {
         setActiveTab(normalizeTab(params.tab));
     }, [params.tab]);
 
-    useEffect(() => {
-        let isMounted = true;
-
-        const hydrateStoredCreatedSurveys = async () => {
-            const storedSurveys = await loadStoredCreatedSurveys();
-
-            if (!isMounted || storedSurveys.length === 0) {
-                return;
-            }
-
-            setCreatedSurveys((current) => [
-                ...storedSurveys,
-                ...current.filter((survey) => !storedSurveys.some((stored) => stored.id === survey.id)),
-            ]);
-        };
-
-        hydrateStoredCreatedSurveys();
-
-        return () => {
-            isMounted = false;
-        };
+    const reloadRegistryFeed = useCallback(async () => {
+        try {
+            setIsRegistryLoading(true);
+            const nextFeed = await loadRegisteredSurveyFeed({
+                excludeClosed: false,
+                excludeVoted: false,
+            });
+            setRegistryFeed(nextFeed);
+        } catch (error) {
+            console.error("[my-surveys] registry:load:error", error);
+        } finally {
+            setIsRegistryLoading(false);
+        }
     }, []);
+
+    useEffect(() => {
+        if (isWalletLoading || !walletAddress) {
+            return;
+        }
+
+        reloadRegistryFeed();
+    }, [isWalletLoading, reloadRegistryFeed, walletAddress]);
+
+    const handleRefresh = useCallback(async () => {
+        setIsRefreshing(true);
+        await reloadRegistryFeed();
+        setIsRefreshing(false);
+    }, [reloadRegistryFeed]);
+
+    const createdSurveys = useMemo(() => {
+        if (!walletAddress) {
+            return [];
+        }
+
+        const normalizedWalletAddress = walletAddress.toLowerCase();
+
+        return registryFeed
+            .filter((item) => item.registry.creator.toLowerCase() === normalizedWalletAddress)
+            .map(mapFeedItemToCreatedSurvey);
+    }, [registryFeed, walletAddress]);
+
+    const participatedSurveys = useMemo(() => {
+        if (!walletAddress) {
+            return [];
+        }
+
+        return registryFeed
+            .filter(
+                (item) =>
+                    item.detail.hasVoted === true
+            )
+            .map(mapFeedItemToParticipatedSurvey);
+    }, [registryFeed, walletAddress]);
 
     const handleQuickPublishTest = async () => {
         if (isQuickPublishing) return;
@@ -190,29 +188,12 @@ export default function MySurveys() {
                 console.error("[my-surveys] registry:register:error", registryError);
             }
 
-            const nextCreatedSurvey: CreatedSurveyCardData = {
-                id: publishedElection.electionId,
-                title: draft.name,
-                category: draft.category || "Vocdoni DEV",
-                status: "active",
-                rewardPerVoter: draft.rewardPerVoter ?? 0,
-                endsAt: draft.endDate ? formatShortDate(draft.endDate) : null,
-                responsesCurrent: 0,
-                responsesTarget: draft.voterCap ?? publishedElection.censusSize,
-                spent: 0,
-            };
-
             setPublishedExplorerUrls((current) => ({
                 ...current,
                 [publishedElection.electionId]: publishedElection.explorerUrl,
             }));
             setLatestPublishedTestSurveyId(publishedElection.electionId);
-
-            setCreatedSurveys((current) => [
-                nextCreatedSurvey,
-                ...current,
-            ]);
-            await upsertStoredCreatedSurvey(nextCreatedSurvey);
+            await reloadRegistryFeed();
 
             Alert.alert(
                 registryTxHash ? "Vocdoni test survey created" : "Vocdoni survey created, registry failed",
@@ -220,7 +201,7 @@ export default function MySurveys() {
                     ? publishedElection.rotatedWallet
                         ? `Election ${publishedElection.electionId} was created on Vocdoni DEV, registered on-chain, and added to your list.\n\nRegistry tx: ${registryTxHash}\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
                         : `Election ${publishedElection.electionId} was created on Vocdoni DEV, registered on-chain, and added to your list.\n\nRegistry tx: ${registryTxHash}`
-                    : `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list, but registry submission failed. The survey will not appear in the public feed until it is registered on-chain.`
+                    : `Election ${publishedElection.electionId} was created on Vocdoni DEV, but registry submission failed. The survey will not appear in the public feed until it is registered on-chain.`
             );
         } catch (error) {
             Alert.alert(
@@ -247,7 +228,7 @@ export default function MySurveys() {
         if (!targetSurvey) {
             Alert.alert(
                 "Survey not found",
-                "The latest test survey is no longer in the local list. Create a new test survey and try again."
+                "The latest test survey is no longer in your created registry list. Create a new test survey and try again."
             );
             return;
         }
@@ -262,35 +243,7 @@ export default function MySurveys() {
                 [latestPublishedTestSurveyId]: submittedVote.voteId,
             }));
 
-            if (!submittedVote.alreadyVoted) {
-                setCreatedSurveys((current) =>
-                    current.map((survey) =>
-                        survey.id === latestPublishedTestSurveyId
-                            ? {
-                                ...survey,
-                                responsesCurrent: (survey.responsesCurrent ?? 0) + 1,
-                            }
-                            : survey
-                    )
-                );
-
-                setParticipatedSurveys((current) => {
-                    if (current.some((survey) => survey.id === latestPublishedTestSurveyId)) {
-                        return current;
-                    }
-
-                    return [
-                        {
-                            id: latestPublishedTestSurveyId,
-                            title: targetSurvey.title,
-                            category: targetSurvey.category,
-                            votedAt: formatShortDate(new Date().toISOString()),
-                            rewardStatus: "not_applicable",
-                        },
-                        ...current,
-                    ];
-                });
-            }
+            await reloadRegistryFeed();
 
             Alert.alert(
                 submittedVote.alreadyVoted ? "Vote already recorded" : "Test vote submitted",
@@ -374,21 +327,26 @@ export default function MySurveys() {
                 {activeTab === "created" ? (
                     <CreatedSurveys
                         surveys={createdSurveys}
-                        onCreateNew={() => {router.push("/create-survey")}}
+                        onCreateNew={() => { router.push("/create-survey"); }}
                         onQuickPublishTest={handleQuickPublishTest}
                         isQuickPublishing={isQuickPublishing}
                         onQuickVoteTest={handleQuickVoteTest}
                         canQuickVoteTest={Boolean(latestPublishedTestSurveyId)}
                         isQuickVoting={isQuickVoting}
+                        isRefreshing={isRefreshing}
+                        onRefresh={handleRefresh}
                         onManage={handleManageSurvey}
                         onEdit={() => {}}
-                        onResults={(id) => { router.push(`/survey/results/${id}`) }}
+                        onResults={(id) => { router.push(`/survey/results/${id}`); }}
                     />
                 ) : (
-                    <ParticipatedSurveys surveys={participatedSurveys} />
+                    <ParticipatedSurveys
+                        surveys={participatedSurveys}
+                        isRefreshing={isRefreshing}
+                        onRefresh={handleRefresh}
+                    />
                 )}
             </View>
-            
         </View>
     );
 }

@@ -16,7 +16,6 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { palette } from "@/theme/palette";
 import { useSurveyDraft } from "@/utils/SurveyDraftContext";
-import { upsertStoredCreatedSurvey } from "@/utils/localCreatedSurveys";
 import { registerSurveyInRegistry } from "@/utils/registry/client";
 import { publishSurveyDraft } from "@/utils/vocdoni/publishSurvey";
 
@@ -117,22 +116,6 @@ export default function SurveyBudgetStep() {
             }
 
             console.log("[create-survey] publish:success", publishedElection);
-            await upsertStoredCreatedSurvey({
-                id: publishedElection.electionId,
-                title: nextDraft.name,
-                category: nextDraft.category || "General",
-                status: "active",
-                rewardPerVoter: nextDraft.rewardPerVoter ?? 0,
-                endsAt: nextDraft.endDate
-                    ? new Intl.DateTimeFormat("en-US", {
-                        month: "short",
-                        day: "numeric",
-                    }).format(new Date(nextDraft.endDate))
-                    : null,
-                responsesCurrent: 0,
-                responsesTarget: nextDraft.voterCap ?? publishedElection.censusSize,
-                spent: 0,
-            });
             resetDraft();
 
             Alert.alert(

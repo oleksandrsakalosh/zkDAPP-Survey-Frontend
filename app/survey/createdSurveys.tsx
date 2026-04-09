@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import CreatedSurveyCard from "@/components/createdSurveyCard";
@@ -14,6 +14,8 @@ type Props = {
     onQuickVoteTest: () => void;
     canQuickVoteTest?: boolean;
     isQuickVoting?: boolean;
+    isRefreshing?: boolean;
+    onRefresh?: () => void;
     onManage: (id: string) => void;
     onEdit: (id: string) => void;
     onResults: (id: string) => void;
@@ -27,6 +29,8 @@ export default function CreatedSurveys({
     onQuickVoteTest,
     canQuickVoteTest = false,
     isQuickVoting = false,
+    isRefreshing = false,
+    onRefresh,
     onManage,
     onEdit,
     onResults,
@@ -86,6 +90,21 @@ export default function CreatedSurveys({
                 }}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={onRefresh}
+                        tintColor={palette.primary}
+                    />
+                }
+                ListEmptyComponent={
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyTitle}>No created surveys yet</Text>
+                        <Text style={styles.emptyText}>
+                            Create a survey or pull down to refresh your registry-backed list.
+                        </Text>
+                    </View>
+                }
             />
 
             <View style={styles.stickyWrap}>
@@ -176,6 +195,27 @@ const styles = StyleSheet.create({
         color: palette.textSecondary,
         fontWeight: "700",
         fontSize: 13,
+    },
+    emptyState: {
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.white,
+        paddingHorizontal: 16,
+        paddingVertical: 20,
+        alignItems: "center",
+        gap: 8,
+    },
+    emptyTitle: {
+        color: palette.primaryDark,
+        fontSize: 16,
+        fontWeight: "700",
+    },
+    emptyText: {
+        color: palette.textSecondary,
+        fontSize: 14,
+        textAlign: "center",
+        lineHeight: 20,
     },
     stickyWrap: {
         position: "absolute",

@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Pressable,
+    RefreshControl,
     ScrollView,
     StyleSheet,
     Text,
@@ -30,6 +31,7 @@ const SORT_KEYS: SortKey[] = ["rewardDesc", "rewardAsc", "nameAsc"];
 export default function Explore() {
     const [surveys, setSurveys] = useState<SurveyCardData[]>([]);
     const [isLoadingSurveys, setIsLoadingSurveys] = useState(true);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [feedError, setFeedError] = useState<string | null>(null);
     const [query, setQuery] = useState("");
     const [sortBy, setSortBy] = useState<SortKey>("rewardDesc");
@@ -49,46 +51,37 @@ export default function Explore() {
     const [appliedTime, setAppliedTime] = useState("");
     const [appliedQualifiedOnly, setAppliedQualifiedOnly] = useState(false);
 
-    useEffect(() => {
-        let isMounted = true;
-
-        const hydrateFeed = async () => {
-            try {
+    const hydrateFeed = async (mode: "initial" | "refresh" = "initial") => {
+        try {
+            if (mode === "initial") {
                 setIsLoadingSurveys(true);
-                setFeedError(null);
-
-                if (!isRegistryConfigured()) {
-                    throw new Error("Set EXPO_PUBLIC_REGISTRY_RPC_URL to load the public survey registry.");
-                }
-
-                const feed = await loadRegisteredSurveyFeed();
-
-                if (!isMounted) {
-                    return;
-                }
-
-                setSurveys(feed.map((item) => item.card));
-            } catch (error) {
-                if (!isMounted) {
-                    return;
-                }
-
-                setFeedError(
-                    error instanceof Error ? error.message : "Unable to load the public survey registry."
-                );
-                setSurveys([]);
-            } finally {
-                if (isMounted) {
-                    setIsLoadingSurveys(false);
-                }
+            } else {
+                setIsRefreshing(true);
             }
-        };
+            setFeedError(null);
 
+            if (!isRegistryConfigured()) {
+                throw new Error("Set EXPO_PUBLIC_REGISTRY_RPC_URL to load the public survey registry.");
+            }
+
+            const feed = await loadRegisteredSurveyFeed();
+            setSurveys(feed.map((item) => item.card));
+        } catch (error) {
+            setFeedError(
+                error instanceof Error ? error.message : "Unable to load the public survey registry."
+            );
+            setSurveys([]);
+        } finally {
+            if (mode === "initial") {
+                setIsLoadingSurveys(false);
+            } else {
+                setIsRefreshing(false);
+            }
+        }
+    };
+
+    useEffect(() => {
         hydrateFeed();
-
-        return () => {
-            isMounted = false;
-        };
     }, []);
 
     const filteredSurveys = useMemo(() => {
@@ -216,7 +209,17 @@ export default function Explore() {
 
     return (
         <>
-            <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
+            <ScrollView
+                style={styles.screen}
+                contentContainerStyle={styles.container}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={() => hydrateFeed("refresh")}
+                        tintColor={palette.primary}
+                    />
+                }
+            >
                 <View style={styles.searchRow}>
                     <View style={styles.searchBox}>
                         <MaterialIcons
