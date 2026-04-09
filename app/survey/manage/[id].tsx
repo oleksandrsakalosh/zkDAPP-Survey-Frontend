@@ -1,5 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Platform,
   Pressable,
@@ -14,193 +15,162 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Sharing from "expo-sharing";
 import * as FileSystem from "expo-file-system/legacy";
 
-import {
-  CreatorRecentResponse,
-  SurveyManageDetail,
-  SurveyRequirement,
-} from "@/domain/models";
+import { SurveyManageDetail, SurveyRequirement } from "@/domain/models";
 import { palette } from "@/theme/palette";
-
-type ManageSurveyRecord = {
-  survey: SurveyManageDetail;
-  durationLabel: string;
-  closesLabel: string;
-};
-
-const MANAGE_SURVEY_MOCK: Record<string, ManageSurveyRecord> = {
-  c1: {
-    survey: {
-      id: "c1",
-      title: "Consumer Spending Habits Q1 2025",
-      description: "Finance behavior survey for Q1 2025.",
-      status: "active",
-      categories: [{ id: "cat-finance", label: "Finance" }],
-      budget: {
-        rewardPerVoter: { amount: 1, currency: "USD" },
-        paidCap: 500,
-        remainingBudget: { amount: 253, currency: "USD" },
-      },
-      progress: {
-        responseCount: 583,
-        paidResponseCount: 247,
-        paidCap: 500,
-        paidSlotsLeft: 253,
-      },
-      timeInfo: {
-        closesAt: "2025-03-15T23:59:00Z",
-        daysRemaining: 23,
-      },
-      requirements: [
-        {
-          id: "req-1",
-          type: "Age",
-          value: "25-54",
-        },
-        {
-          id: "req-2",
-          type: "Location",
-          value: "SK",
-        },
-      ],
-      recentResponses: [
-        {
-          id: "r-1",
-          pseudonym: "Anon #4821",
-          respondedAt: "2025-02-20T10:18:00Z",
-          rewardStatus: "paid",
-          reward: { amount: 1, currency: "USD" },
-        },
-        {
-          id: "r-2",
-          pseudonym: "Anon #3307",
-          respondedAt: "2025-02-20T10:09:00Z",
-          rewardStatus: "paid",
-          reward: { amount: 1, currency: "USD" },
-        },
-        {
-          id: "r-3",
-          pseudonym: "Anon #9142",
-          respondedAt: "2025-02-20T09:52:00Z",
-          rewardStatus: "unpaid",
-        },
-        {
-          id: "r-4",
-          pseudonym: "Anon #2255",
-          respondedAt: "2025-02-20T09:39:00Z",
-          rewardStatus: "cap_reached",
-        },
-      ],
-      allowedActions: ["share", "end"],
-    },
-    durationLabel: "Feb 10 - Mar 15, 2025",
-    closesLabel: "Mar 15, 2025",
-  },
-  c2: {
-    survey: {
-      id: "c2",
-      title: "AI Product Attitudes",
-      description: "Track user trust and adoption across AI features.",
-      status: "active",
-      categories: [{ id: "cat-tech", label: "Technology" }],
-      budget: {
-        rewardPerVoter: { amount: 1.5, currency: "USD" },
-        paidCap: 150,
-        remainingBudget: { amount: 104, currency: "USD" },
-      },
-      progress: {
-        responseCount: 96,
-        paidResponseCount: 46,
-        paidCap: 150,
-        paidSlotsLeft: 104,
-      },
-      timeInfo: {
-        closesAt: "2025-03-08T23:59:00Z",
-        daysRemaining: 16,
-      },
-      requirements: [
-        {
-          id: "req-3",
-          type: "Age",
-          value: "18-45",
-        },
-        {
-          id: "req-4",
-          type: "Location",
-          value: "US",
-        },
-      ],
-      recentResponses: [
-        {
-          id: "r-5",
-          pseudonym: "Anon #1988",
-          respondedAt: "2025-02-20T10:15:00Z",
-          rewardStatus: "paid",
-          reward: { amount: 1.5, currency: "USD" },
-        },
-        {
-          id: "r-6",
-          pseudonym: "Anon #7420",
-          respondedAt: "2025-02-20T09:55:00Z",
-          rewardStatus: "paid",
-          reward: { amount: 1.5, currency: "USD" },
-        },
-      ],
-      allowedActions: ["share", "end"],
-    },
-    durationLabel: "Feb 18 - Mar 8, 2025",
-    closesLabel: "Mar 8, 2025",
-  },
-};
+import { loadRegisteredSurveyDetail } from "@/utils/registry/feed";
 
 function formatWholeMoney(amount: number, currency: string) {
   return `${amount.toFixed(0)} ${currency}`;
-}
-
-function formatReward(amount: number, currency: string) {
-  return `+${amount.toFixed(2)} ${currency}`;
-}
-
-function getRelativeMinutes(isoDate: string) {
-  const responded = new Date(isoDate).getTime();
-  const now = new Date("2025-02-20T10:20:00Z").getTime();
-  const diff = Math.max(0, Math.round((now - responded) / (1000 * 60)));
-  return `${diff} min ago`;
 }
 
 function buildRequirements(requirements: SurveyRequirement[] = []) {
   return requirements.map((item) => `${item.type} ${item.value}`);
 }
 
-function getResponseRewardLabel(response: CreatorRecentResponse) {
-  const amount = response.reward?.amount;
-  if (typeof amount === "number" && amount > 0) {
-    return {
-      text: formatReward(amount, response.reward?.currency || "USD"),
-      color: palette.success,
-    };
+function formatDurationLabel(opensAt?: string, closesAt?: string) {
+  if (!opensAt && !closesAt) {
+    return "Open-ended";
   }
 
-  return {
-    text: "no reward",
-    color: palette.textMuted,
-  };
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const openLabel = opensAt ? formatter.format(new Date(opensAt)) : "Unknown start";
+  const closeLabel = closesAt ? formatter.format(new Date(closesAt)) : "Open-ended";
+  return `${openLabel} - ${closeLabel}`;
+}
+
+function formatClosesLabel(closesAt?: string) {
+  if (!closesAt) {
+    return "Open-ended";
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(closesAt));
 }
 
 export default function ManageSurveyPage() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const selectedId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const [isExporting, setIsExporting] = React.useState(false);
 
-  const record = useMemo(() => {
-    if (selectedId && MANAGE_SURVEY_MOCK[selectedId]) {
-      return MANAGE_SURVEY_MOCK[selectedId];
-    }
-    return MANAGE_SURVEY_MOCK.c1;
+  const [survey, setSurvey] = React.useState<SurveyManageDetail | null>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isExporting, setIsExporting] = React.useState(false);
+  const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSurvey = async () => {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+
+        if (!selectedId) {
+          throw new Error("Missing survey id.");
+        }
+
+        const surveyDetail = await loadRegisteredSurveyDetail(selectedId, {
+          excludeClosed: false,
+          excludeVoted: false,
+        });
+
+        if (!surveyDetail) {
+          throw new Error("Survey not found in the registry feed.");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        const rewardPerVoter = surveyDetail.detail.budget?.rewardPerVoter?.amount ?? 0;
+        const rewardCurrency = surveyDetail.detail.budget?.rewardPerVoter?.currency ?? "USD";
+        const responseCount = surveyDetail.detail.progress?.responseCount ?? 0;
+        const targetResponses = surveyDetail.detail.progress?.targetResponses ?? 0;
+        const remainingBudgetAmount = Math.max(0, (targetResponses - responseCount) * rewardPerVoter);
+
+        setSurvey({
+          ...surveyDetail.detail,
+          budget: {
+            ...surveyDetail.detail.budget,
+            paidCap: targetResponses,
+            remainingBudget: {
+              amount: remainingBudgetAmount,
+              currency: rewardCurrency,
+            },
+          },
+          progress: {
+            ...surveyDetail.detail.progress,
+            paidResponseCount: responseCount,
+            paidCap: targetResponses,
+            paidSlotsLeft: Math.max(0, targetResponses - responseCount),
+          },
+          recentResponses: [],
+          allowedActions: ["share", "export_csv"],
+        });
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setSurvey(null);
+        setErrorMessage(error instanceof Error ? error.message : "Unable to load survey.");
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadSurvey();
+
+    return () => {
+      isMounted = false;
+    };
   }, [selectedId]);
 
-  const survey = record.survey;
+  const durationLabel = useMemo(
+    () => formatDurationLabel(survey?.timeInfo?.opensAt, survey?.timeInfo?.closesAt),
+    [survey?.timeInfo?.closesAt, survey?.timeInfo?.opensAt]
+  );
+  const closesLabel = useMemo(
+    () => formatClosesLabel(survey?.timeInfo?.closesAt),
+    [survey?.timeInfo?.closesAt]
+  );
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.centerBox}>
+          <ActivityIndicator color={palette.primary} />
+          <Text style={styles.centerText}>Loading survey dashboard...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!survey) {
+    return (
+      <SafeAreaView style={styles.screen}>
+        <View style={styles.centerBox}>
+          <Text style={styles.errorTitle}>Survey unavailable</Text>
+          <Text style={styles.centerText}>{errorMessage ?? "Unable to load survey dashboard."}</Text>
+          <Pressable onPress={() => router.back()} style={styles.backToAppButton}>
+            <Text style={styles.backToAppText}>Back</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   const totalResponses = survey.progress?.responseCount ?? 0;
-  const paidResponses = survey.progress?.paidResponseCount ?? 0;
+  const paidResponses = survey.progress?.paidResponseCount ?? totalResponses;
   const paidCap = survey.progress?.paidCap ?? survey.budget?.paidCap ?? 0;
   const paidSlotsLeft = survey.progress?.paidSlotsLeft ?? Math.max(0, paidCap - paidResponses);
   const remainingBudget = survey.budget?.remainingBudget?.amount ?? 0;
@@ -241,7 +211,7 @@ export default function ManageSurveyPage() {
           survey.title,
           survey.status,
           categoryLabel,
-          record.durationLabel,
+          durationLabel,
           String(totalResponses),
           String(paidResponses),
           String(paidCap),
@@ -252,20 +222,7 @@ export default function ManageSurveyPage() {
           remainingBudgetCurrency,
           requirements.join(" | "),
         ],
-        [""],
-        ["response_id", "pseudonym", "responded_at", "reward_status", "reward_amount", "reward_currency"],
       ];
-
-      for (const response of survey.recentResponses ?? []) {
-        csvRows.push([
-          response.id,
-          response.pseudonym,
-          response.respondedAt,
-          response.rewardStatus,
-          response.reward ? response.reward.amount.toFixed(2) : "",
-          response.reward ? response.reward.currency : "",
-        ]);
-      }
 
       const escapeCsvCell = (value: string) => `"${value.replace(/"/g, "\"\"")}"`;
       const csvContent = csvRows
@@ -330,7 +287,7 @@ export default function ManageSurveyPage() {
 
           <View style={styles.livePill}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveText}>LIVE - {categoryLabel}</Text>
+            <Text style={styles.liveText}>{survey.status === "results" ? "CLOSED" : "LIVE"} - {categoryLabel}</Text>
           </View>
 
           <View style={styles.statsRow}>
@@ -363,48 +320,9 @@ export default function ManageSurveyPage() {
               <View style={[styles.progressFill, { width: `${paidCapProgress * 100}%` }]} />
             </View>
             <Text style={styles.progressHint}>
-              Closes {record.closesLabel} - {daysRemaining} days remaining
+              Closes {closesLabel}{daysRemaining > 0 ? ` - ${daysRemaining} days remaining` : ""}
             </Text>
           </View>
-        </View>
-
-        <View style={styles.warningBox}>
-          <MaterialIcons name="error-outline" size={16} color={palette.orange} />
-          <Text style={styles.warningText}>
-            {paidSlotsLeft} paid slots remaining. Responses after the cap are still recorded but voters
-            will not be rewarded.
-          </Text>
-        </View>
-
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent Responses</Text>
-            <Pressable
-              onPress={() => router.push(`/survey/manage/${survey.id}/responses`)}
-              style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
-            >
-              <Text style={styles.linkText}>View all</Text>
-            </Pressable>
-          </View>
-
-          {(survey.recentResponses ?? []).map((response, index) => {
-            const rewardLabel = getResponseRewardLabel(response);
-            const initial = response.pseudonym.charAt(0).toUpperCase();
-            const isLast = index === (survey.recentResponses ?? []).length - 1;
-
-            return (
-              <View key={response.id} style={[styles.responseRow, !isLast && styles.rowDivider]}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{initial}</Text>
-                </View>
-                <View style={styles.responseInfo}>
-                  <Text style={styles.responseName}>{response.pseudonym}</Text>
-                  <Text style={styles.responseTime}>{getRelativeMinutes(response.respondedAt)}</Text>
-                </View>
-                <Text style={[styles.responseReward, { color: rewardLabel.color }]}>{rewardLabel.text}</Text>
-              </View>
-            );
-          })}
         </View>
 
         <View style={styles.sectionCard}>
@@ -436,7 +354,7 @@ export default function ManageSurveyPage() {
             <Text style={styles.infoLabel} numberOfLines={1}>
               Duration
             </Text>
-            <Text style={styles.infoValue}>{record.durationLabel}</Text>
+            <Text style={styles.infoValue}>{durationLabel}</Text>
           </View>
 
           <View style={[styles.infoRow, styles.rowDivider]}>
@@ -453,11 +371,15 @@ export default function ManageSurveyPage() {
               Requirements
             </Text>
             <View style={styles.requirementsWrap}>
-              {requirements.map((item) => (
-                <View key={item} style={styles.requirementPill}>
-                  <Text style={styles.requirementText}>{item}</Text>
-                </View>
-              ))}
+              {requirements.length > 0 ? (
+                requirements.map((item) => (
+                  <View key={item} style={styles.requirementPill}>
+                    <Text style={styles.requirementText}>{item}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.infoValue}>No requirements</Text>
+              )}
             </View>
           </View>
         </View>
@@ -484,6 +406,36 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingBottom: 98,
+  },
+  centerBox: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+    gap: 10,
+  },
+  centerText: {
+    color: palette.textSecondary,
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  errorTitle: {
+    color: palette.primaryDark,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  backToAppButton: {
+    marginTop: 8,
+    backgroundColor: palette.primary,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  backToAppText: {
+    color: palette.white,
+    fontWeight: "700",
+    fontSize: 14,
   },
   hero: {
     backgroundColor: palette.primaryPressed,
@@ -614,26 +566,6 @@ const styles = StyleSheet.create({
     color: palette.white50,
     fontSize: 10,
   },
-  warningBox: {
-    marginTop: 16,
-    marginHorizontal: 20,
-    borderWidth: 1,
-    borderColor: palette.orangeBorder,
-    borderRadius: 10,
-    backgroundColor: palette.surfaceMuted,
-    paddingVertical: 11,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  warningText: {
-    flex: 1,
-    color: palette.orange,
-    fontSize: 12,
-    lineHeight: 17,
-    fontWeight: "500",
-  },
   sectionCard: {
     marginTop: 14,
     marginHorizontal: 20,
@@ -673,47 +605,9 @@ const styles = StyleSheet.create({
   linkButtonDisabled: {
     opacity: 0.6,
   },
-  responseRow: {
-    minHeight: 45,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    flexDirection: "row",
-    alignItems: "center",
-  },
   rowDivider: {
     borderBottomWidth: 1,
     borderBottomColor: palette.surfaceSoft,
-  },
-  avatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: palette.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
-  },
-  avatarText: {
-    color: palette.white,
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  responseInfo: {
-    flex: 1,
-  },
-  responseName: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: palette.primaryDark,
-  },
-  responseTime: {
-    marginTop: 2,
-    fontSize: 10,
-    color: palette.textMuted,
-  },
-  responseReward: {
-    fontSize: 13,
-    fontWeight: "500",
   },
   infoRow: {
     minHeight: 46,

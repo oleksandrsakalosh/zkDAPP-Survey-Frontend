@@ -48,6 +48,21 @@ const buildElectionDescription = (draft: SurveyDraft) => {
   return `${draft.description}\n\n${requirementSummary}`.trim();
 };
 
+const buildSurveyCardMeta = (draft: SurveyDraft, censusSize: number) => ({
+  surveyCard: {
+    category: draft.category.trim() || "General",
+    tags: draft.tags.map((tag) => tag.trim()).filter(Boolean),
+    rewardPerVoter: draft.rewardPerVoter ?? 0,
+    estimatedMinutes: Math.max(1, draft.questions.length),
+    voterCap: draft.voterCap ?? censusSize,
+    requirements: draft.requirements.map((requirement) => ({
+      id: requirement.id,
+      type: requirement.type,
+      value: requirement.value,
+    })),
+  },
+});
+
 const resolveElectionEndDate = (draft: SurveyDraft) => {
   if (draft.endDate) {
     return new Date(draft.endDate);
@@ -133,6 +148,7 @@ export const publishSurveyDraft = async (draft: SurveyDraft) => {
     const election = Election.from({
       title: draft.name.trim(),
       description: buildElectionDescription(draft),
+      meta: buildSurveyCardMeta(draft, dynamicCensusSize),
       endDate: endDate.getTime(),
       census,
       electionType: {
