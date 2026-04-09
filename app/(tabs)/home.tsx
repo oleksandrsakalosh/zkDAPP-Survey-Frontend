@@ -229,7 +229,7 @@ export default function Home() {
                         key={survey.id}
                         survey={survey}
                         voteLabel="Details"
-                        onVote={(id) => router.push(`/voting/${id}`)}
+                        onVote={(id) => router.push(`/voting/${id}` as any)}
                     />
                 ))}
             </ScrollView>

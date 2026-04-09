@@ -6,6 +6,8 @@ import ParticipatedSurveys from "@/app/survey/participatedSurveys";
 import { CreatedSurveyCardData, ParticipatedSurveySummary, SurveyDraft } from "@/domain/models";
 import { palette } from "@/theme/palette";
 import { router, useLocalSearchParams } from "expo-router";
+import { upsertStoredCreatedSurvey, loadStoredCreatedSurveys } from "@/utils/localCreatedSurveys";
+import { registerSurveyInRegistry } from "@/utils/registry/client";
 import { publishSurveyDraft } from "@/utils/vocdoni/publishSurvey";
 import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
 
@@ -130,6 +132,7 @@ export default function MySurveys() {
     const [createdSurveys, setCreatedSurveys] = useState<CreatedSurveyCardData[]>(INITIAL_CREATED_SURVEYS);
     const [participatedSurveys, setParticipatedSurveys] = useState<ParticipatedSurveySummary[]>(INITIAL_PARTICIPATED_SURVEYS);
     const [publishedExplorerUrls, setPublishedExplorerUrls] = useState<Record<string, string>>({});
+    const [publishedRegistryTxHashes, setPublishedRegistryTxHashes] = useState<Record<string, string>>({});
     const [submittedVoteIds, setSubmittedVoteIds] = useState<Record<string, string>>({});
     const [latestPublishedTestSurveyId, setLatestPublishedTestSurveyId] = useState<string | null>(null);
     const [isQuickPublishing, setIsQuickPublishing] = useState(false);
@@ -138,6 +141,29 @@ export default function MySurveys() {
     useEffect(() => {
         setActiveTab(normalizeTab(params.tab));
     }, [params.tab]);
+
+    useEffect(() => {
+        let isMounted = true;
+
+        const hydrateStoredCreatedSurveys = async () => {
+            const storedSurveys = await loadStoredCreatedSurveys();
+
+            if (!isMounted || storedSurveys.length === 0) {
+                return;
+            }
+
+            setCreatedSurveys((current) => [
+                ...storedSurveys,
+                ...current.filter((survey) => !storedSurveys.some((stored) => stored.id === survey.id)),
+            ]);
+        };
+
+        hydrateStoredCreatedSurveys();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
 
     const handleQuickPublishTest = async () => {
         if (isQuickPublishing) return;
@@ -148,6 +174,33 @@ export default function MySurveys() {
             setIsQuickPublishing(true);
 
             const publishedElection = await publishSurveyDraft(draft);
+            let registryTxHash: string | null = null;
+
+            try {
+                const registryRegistration = await registerSurveyInRegistry({
+                    electionId: publishedElection.electionId,
+                    category: draft.category || "General",
+                });
+                registryTxHash = registryRegistration.txHash;
+                setPublishedRegistryTxHashes((current) => ({
+                    ...current,
+                    [publishedElection.electionId]: registryRegistration.txHash,
+                }));
+            } catch (registryError) {
+                console.error("[my-surveys] registry:register:error", registryError);
+            }
+
+            const nextCreatedSurvey: CreatedSurveyCardData = {
+                id: publishedElection.electionId,
+                title: draft.name,
+                category: draft.category || "Vocdoni DEV",
+                status: "active",
+                rewardPerVoter: draft.rewardPerVoter ?? 0,
+                endsAt: draft.endDate ? formatShortDate(draft.endDate) : null,
+                responsesCurrent: 0,
+                responsesTarget: draft.voterCap ?? publishedElection.censusSize,
+                spent: 0,
+            };
 
             setPublishedExplorerUrls((current) => ({
                 ...current,
@@ -156,25 +209,18 @@ export default function MySurveys() {
             setLatestPublishedTestSurveyId(publishedElection.electionId);
 
             setCreatedSurveys((current) => [
-                {
-                    id: publishedElection.electionId,
-                    title: draft.name,
-                    category: draft.category || "Vocdoni DEV",
-                    status: "active",
-                    rewardPerVoter: draft.rewardPerVoter ?? 0,
-                    endsAt: draft.endDate ? formatShortDate(draft.endDate) : null,
-                    responsesCurrent: 0,
-                    responsesTarget: draft.voterCap ?? publishedElection.censusSize,
-                    spent: 0,
-                },
+                nextCreatedSurvey,
                 ...current,
             ]);
+            await upsertStoredCreatedSurvey(nextCreatedSurvey);
 
             Alert.alert(
-                "Vocdoni test survey created",
-                publishedElection.rotatedWallet
-                    ? `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list.\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
-                    : `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list.`
+                registryTxHash ? "Vocdoni test survey created" : "Vocdoni survey created, registry failed",
+                registryTxHash
+                    ? publishedElection.rotatedWallet
+                        ? `Election ${publishedElection.electionId} was created on Vocdoni DEV, registered on-chain, and added to your list.\n\nRegistry tx: ${registryTxHash}\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
+                        : `Election ${publishedElection.electionId} was created on Vocdoni DEV, registered on-chain, and added to your list.\n\nRegistry tx: ${registryTxHash}`
+                    : `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list, but registry submission failed. The survey will not appear in the public feed until it is registered on-chain.`
             );
         } catch (error) {
             Alert.alert(
@@ -264,13 +310,14 @@ export default function MySurveys() {
 
     const handleManageSurvey = (id: string) => {
         const explorerUrl = publishedExplorerUrls[id];
+        const registryTxHash = publishedRegistryTxHashes[id];
         const voteId = submittedVoteIds[id];
         if (explorerUrl) {
             Alert.alert(
                 "Vocdoni test survey",
                 voteId
-                    ? `Election ${id}\n\nExplorer: ${explorerUrl}\n\nLatest vote: ${voteId}`
-                    : `Election ${id}\n\nExplorer: ${explorerUrl}`
+                    ? `Election ${id}\n\nExplorer: ${explorerUrl}${registryTxHash ? `\n\nRegistry tx: ${registryTxHash}` : ""}\n\nLatest vote: ${voteId}`
+                    : `Election ${id}\n\nExplorer: ${explorerUrl}${registryTxHash ? `\n\nRegistry tx: ${registryTxHash}` : ""}`
             );
             return;
         }

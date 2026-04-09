@@ -1,6 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
+    ActivityIndicator,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -10,136 +11,13 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 
-import SurveyCard from "@/components/surveyCard";
-import { SurveyCardData, SortKey } from "@/domain/models";
-
-import { palette } from "@/theme/palette";
 import FilterModal from "@/components/filterModal";
+import SurveyCard from "@/components/surveyCard";
 import { CATEGORIES } from "@/constants/surveyFilters";
-
-
-const SURVEYS: SurveyCardData[] = [
-    {
-        "id": "1",
-        "title": "Fitness App Usage Habits",
-        "description": "How often do you use fitness apps and what features matter most? 10-question study.",
-        "status": "active",
-        "categories": [
-            { "id": "health", "label": "Health" },
-            { "id": "lifestyle", "label": "Lifestyle" }
-        ],
-        "tags": [
-            { "id": "health", "label": "Health" },
-            { "id": "lifestyle", "label": "Lifestyle" }
-        ],
-        "estimatedMinutes": 5,
-        "eligibility": {
-            "decision": "qualify",
-            "matchedRequirements": [],
-            "failedRequirements": []
-        },
-        "budget": {
-            "rewardPerVoter": { "amount": 2, "currency": "USD" }
-        },
-        "progress": {
-            "responseCount": 88,
-            "targetResponses": 200
-        },
-        "listVariant": "explore",
-        "primaryAction": "vote",
-        "primaryActionLabel": "Start"
-    },
-    {
-        "id": "2",
-        "title": "Prescription Drug Affordability",
-        "description": "Share your experience with prescription costs and insurance coverage. Anonymous and secure.",
-        "status": "active",
-        "categories": [
-            { "id": "health", "label": "Health" },
-            { "id": "finance", "label": "Finance" }
-        ],
-        "tags": [
-            { "id": "health", "label": "Health" },
-            { "id": "finance", "label": "Finance" }
-        ],
-        "estimatedMinutes": 8,
-        "eligibility": {
-            "decision": "not_qualified",
-            "matchedRequirements": [],
-            "failedRequirements": []
-        },
-        "budget": {
-            "rewardPerVoter": { "amount": 3.5, "currency": "USD" }
-        },
-        "progress": {
-            "responseCount": 203,
-            "targetResponses": 400
-        },
-        "listVariant": "explore",
-        "primaryAction": "details",
-        "primaryActionLabel": "View"
-    },
-    {
-        "id": "3",
-        "title": "Remote Work Tool Preferences",
-        "description": "Help us compare productivity tools used by distributed teams across different industries.",
-        "status": "active",
-        "categories": [
-            { "id": "tech", "label": "Tech" },
-            { "id": "productivity", "label": "Productivity" }
-        ],
-        "tags": [
-            { "id": "tech", "label": "Tech" },
-            { "id": "productivity", "label": "Productivity" }
-        ],
-        "estimatedMinutes": 6,
-        "eligibility": {
-            "decision": "qualify",
-            "matchedRequirements": [],
-            "failedRequirements": []
-        },
-        "budget": {
-            "rewardPerVoter": { "amount": 1.25, "currency": "USD" }
-        },
-        "progress": {
-            "responseCount": 52,
-            "targetResponses": 180
-        },
-        "listVariant": "explore",
-        "primaryAction": "vote",
-        "primaryActionLabel": "Start"
-    },
-    {
-        "id": "4",
-        "title": "Personal Banking Mobile UX",
-        "description": "Tell us what works and what does not in your banking app experience over the last 3 months.",
-        "status": "active",
-        "categories": [
-            { "id": "finance", "label": "Finance" },
-            { "id": "tech", "label": "Tech" }
-        ],
-        "tags": [
-            { "id": "finance", "label": "Finance" },
-            { "id": "tech", "label": "Tech" }
-        ],
-        "estimatedMinutes": 7,
-        "eligibility": {
-            "decision": "qualify",
-            "matchedRequirements": [],
-            "failedRequirements": []
-        },
-        "budget": {
-            "rewardPerVoter": { "amount": 2.75, "currency": "USD" }
-        },
-        "progress": {
-            "responseCount": 119,
-            "targetResponses": 250
-        },
-        "listVariant": "explore",
-        "primaryAction": "vote",
-        "primaryActionLabel": "Start"
-    }
-];
+import { SurveyCardData, SortKey } from "@/domain/models";
+import { palette } from "@/theme/palette";
+import { isRegistryConfigured } from "@/utils/registry/client";
+import { loadRegisteredSurveyFeed } from "@/utils/registry/feed";
 
 const SORT_LABELS: Record<SortKey, string> = {
     rewardDesc: "Reward ↓",
@@ -150,6 +28,9 @@ const SORT_LABELS: Record<SortKey, string> = {
 const SORT_KEYS: SortKey[] = ["rewardDesc", "rewardAsc", "nameAsc"];
 
 export default function Explore() {
+    const [surveys, setSurveys] = useState<SurveyCardData[]>([]);
+    const [isLoadingSurveys, setIsLoadingSurveys] = useState(true);
+    const [feedError, setFeedError] = useState<string | null>(null);
     const [query, setQuery] = useState("");
     const [sortBy, setSortBy] = useState<SortKey>("rewardDesc");
     const [selectedCategory, setSelectedCategory] = useState<string[]>([]);
@@ -168,10 +49,52 @@ export default function Explore() {
     const [appliedTime, setAppliedTime] = useState("");
     const [appliedQualifiedOnly, setAppliedQualifiedOnly] = useState(false);
 
+    useEffect(() => {
+        let isMounted = true;
+
+        const hydrateFeed = async () => {
+            try {
+                setIsLoadingSurveys(true);
+                setFeedError(null);
+
+                if (!isRegistryConfigured()) {
+                    throw new Error("Set EXPO_PUBLIC_REGISTRY_RPC_URL to load the public survey registry.");
+                }
+
+                const feed = await loadRegisteredSurveyFeed();
+
+                if (!isMounted) {
+                    return;
+                }
+
+                setSurveys(feed.map((item) => item.card));
+            } catch (error) {
+                if (!isMounted) {
+                    return;
+                }
+
+                setFeedError(
+                    error instanceof Error ? error.message : "Unable to load the public survey registry."
+                );
+                setSurveys([]);
+            } finally {
+                if (isMounted) {
+                    setIsLoadingSurveys(false);
+                }
+            }
+        };
+
+        hydrateFeed();
+
+        return () => {
+            isMounted = false;
+        };
+    }, []);
+
     const filteredSurveys = useMemo(() => {
         const loweredQuery = query.trim().toLowerCase();
 
-        let result = SURVEYS.filter((survey) =>
+        let result = surveys.filter((survey) =>
             survey.title.toLowerCase().includes(loweredQuery)
         );
 
@@ -197,13 +120,13 @@ export default function Explore() {
 
         if (appliedTime === "Under 5 min") {
             result = result.filter((survey) => (survey.estimatedMinutes ?? 0) < 5);
-        } else if (appliedTime === "5–10 min") {
+        } else if (appliedTime === "5-10 min" || appliedTime === "5â€“10 min") {
             result = result.filter(
                 (survey) =>
                     (survey.estimatedMinutes ?? 0) >= 5 &&
                     (survey.estimatedMinutes ?? 0) <= 10
             );
-        } else if (appliedTime === "10–20 min") {
+        } else if (appliedTime === "10-20 min" || appliedTime === "10â€“20 min") {
             result = result.filter(
                 (survey) =>
                     (survey.estimatedMinutes ?? 0) >= 10 &&
@@ -223,6 +146,7 @@ export default function Explore() {
     }, [
         query,
         sortBy,
+        surveys,
         appliedCategories,
         appliedMinReward,
         appliedOpenOnly,
@@ -257,10 +181,10 @@ export default function Explore() {
         }
 
         if (selectedCategory.includes(category)) {
-            const newSelection = selectedCategory.filter((c) => c !== category);
+            const newSelection = selectedCategory.filter((item) => item !== category);
             setSelectedCategory(newSelection.length === 0 ? ["All"] : newSelection);
         } else {
-            setSelectedCategory((prev) => [...prev.filter((c) => c !== "All"), category]);
+            setSelectedCategory((current) => [...current.filter((item) => item !== "All"), category]);
         }
     };
 
@@ -386,6 +310,29 @@ export default function Explore() {
                         <Text style={styles.sortText}>Sort: {SORT_LABELS[sortBy]}</Text>
                     </Pressable>
                 </View>
+
+                {isLoadingSurveys && (
+                    <View style={styles.feedbackCard}>
+                        <ActivityIndicator color={palette.primary} />
+                        <Text style={styles.feedbackText}>Loading public survey registry...</Text>
+                    </View>
+                )}
+
+                {!isLoadingSurveys && feedError && (
+                    <View style={styles.feedbackCard}>
+                        <Text style={styles.feedbackTitle}>Registry unavailable</Text>
+                        <Text style={styles.feedbackText}>{feedError}</Text>
+                    </View>
+                )}
+
+                {!isLoadingSurveys && !feedError && categoryFilteredSurveys.length === 0 && (
+                    <View style={styles.feedbackCard}>
+                        <Text style={styles.feedbackTitle}>No registered surveys</Text>
+                        <Text style={styles.feedbackText}>
+                            Surveys will appear here after they are created in Vocdoni and registered on-chain.
+                        </Text>
+                    </View>
+                )}
 
                 {categoryFilteredSurveys.map((survey) => (
                     <SurveyCard
@@ -522,5 +469,25 @@ const styles = StyleSheet.create({
         color: palette.primary,
         fontSize: 15,
         fontWeight: "600",
+    },
+    feedbackCard: {
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.white,
+        paddingHorizontal: 16,
+        paddingVertical: 18,
+        gap: 10,
+        alignItems: "center",
+    },
+    feedbackTitle: {
+        color: palette.primaryDark,
+        fontSize: 16,
+        fontWeight: "700",
+    },
+    feedbackText: {
+        color: palette.textSecondary,
+        fontSize: 14,
+        textAlign: "center",
     },
 });

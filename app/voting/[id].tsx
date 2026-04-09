@@ -1,4 +1,5 @@
-import React from "react";
+import Feather from "@expo/vector-icons/Feather";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -8,312 +9,94 @@ import {
   View,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Feather from "@expo/vector-icons/Feather";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SurveyDetail } from "@/domain/models";
 import { palette } from "@/theme/palette";
+import { loadRegisteredSurveyDetail } from "@/utils/registry/feed";
 import { useVoting } from "@/utils/VotingContext";
 
-// ─── Mock survey detail data ──────────────────────────────────────────────────
-
-const SURVEY_DETAILS: Record<string, SurveyDetail> = {
-  "1": {
-    id: "1",
-    title: "Fitness App Usage Habits",
-    description:
-      "How often do you use fitness apps and what features matter most? This 5-question study helps shape the future of digital health and fitness experiences. Your responses are anonymous and securely processed.",
-    status: "active",
-    categories: [
-      { id: "health", label: "Health" },
-      { id: "lifestyle", label: "Lifestyle" },
-    ],
-    budget: { rewardPerVoter: { amount: 2, currency: "USD" } },
-    progress: { responseCount: 88, targetResponses: 200 },
-    estimatedMinutes: 5,
-    timeInfo: {
-      closesAt: "2026-03-20T23:59:00Z",
-      daysRemaining: 4,
-      isOpen: true,
-      displayLabel: "Mar 16 – Mar 20, 2026",
-    },
-    requirements: [{ id: "r1", type: "Age", value: "18+" }],
-    canParticipate: true,
-    hasVoted: false,
-    questions: [
-      {
-        id: "q1", order: 1, type: "single_choice", isRequired: true,
-        title: "How often do you use fitness apps?",
-        options: [
-          { id: "o1", label: "Daily", order: 1 },
-          { id: "o2", label: "3–5 times per week", order: 2 },
-          { id: "o3", label: "Once a week", order: 3 },
-          { id: "o4", label: "Rarely", order: 4 },
-          { id: "o5", label: "Never", order: 5 },
-        ],
-      },
-      {
-        id: "q2", order: 2, type: "multiple_choice", isRequired: true,
-        title: "Which features do you use most? (Select all that apply)",
-        options: [
-          { id: "o1", label: "Workout tracking", order: 1 },
-          { id: "o2", label: "Nutrition logging", order: 2 },
-          { id: "o3", label: "Sleep tracking", order: 3 },
-          { id: "o4", label: "Heart rate monitoring", order: 4 },
-          { id: "o5", label: "Social challenges", order: 5 },
-        ],
-      },
-      {
-        id: "q3", order: 3, type: "single_choice", isRequired: true,
-        title: "How satisfied are you with your current fitness app?",
-        options: [
-          { id: "o1", label: "Very Satisfied", order: 1 },
-          { id: "o2", label: "Satisfied", order: 2 },
-          { id: "o3", label: "Neutral", order: 3 },
-          { id: "o4", label: "Dissatisfied", order: 4 },
-          { id: "o5", label: "Very Dissatisfied", order: 5 },
-        ],
-      },
-      {
-        id: "q4", order: 4, type: "single_choice", isRequired: true,
-        title: "Would you recommend your fitness app to others?",
-        options: [
-          { id: "o1", label: "Definitely yes", order: 1 },
-          { id: "o2", label: "Probably yes", order: 2 },
-          { id: "o3", label: "Not sure", order: 3 },
-          { id: "o4", label: "Probably no", order: 4 },
-          { id: "o5", label: "Definitely no", order: 5 },
-        ],
-      },
-      {
-        id: "q5", order: 5, type: "textarea", isRequired: false,
-        title: "What improvements would you like to see in fitness apps?",
-      },
-    ],
-  },
-  "2": {
-    id: "2",
-    title: "Prescription Drug Affordability",
-    description:
-      "Share your experience with prescription costs and insurance coverage. This anonymous survey helps policymakers better understand the real-world impact of drug pricing on everyday people.",
-    status: "active",
-    categories: [
-      { id: "health", label: "Health" },
-      { id: "finance", label: "Finance" },
-    ],
-    budget: { rewardPerVoter: { amount: 3.5, currency: "USD" } },
-    progress: { responseCount: 203, targetResponses: 400 },
-    estimatedMinutes: 8,
-    timeInfo: {
-      closesAt: "2026-04-01T23:59:00Z",
-      daysRemaining: 16,
-      isOpen: true,
-      displayLabel: "Mar 16 – Apr 1, 2026",
-    },
-    requirements: [
-      { id: "r1", type: "Age", value: "25+" },
-      { id: "r2", type: "Location", value: "US" },
-    ],
-    canParticipate: true,
-    hasVoted: false,
-    questions: [
-      {
-        id: "q1", order: 1, type: "single_choice", isRequired: true,
-        title: "How often do you struggle to afford prescription medications?",
-        options: [
-          { id: "o1", label: "Never", order: 1 },
-          { id: "o2", label: "Rarely", order: 2 },
-          { id: "o3", label: "Sometimes", order: 3 },
-          { id: "o4", label: "Often", order: 4 },
-          { id: "o5", label: "Always", order: 5 },
-        ],
-      },
-      {
-        id: "q2", order: 2, type: "multiple_choice", isRequired: true,
-        title: "Which factors affect your ability to afford medications? (Select all that apply)",
-        options: [
-          { id: "o1", label: "High copays", order: 1 },
-          { id: "o2", label: "No insurance", order: 2 },
-          { id: "o3", label: "Insurance gaps", order: 3 },
-          { id: "o4", label: "High out-of-pocket costs", order: 4 },
-        ],
-      },
-      {
-        id: "q3", order: 3, type: "single_choice", isRequired: true,
-        title: "Have you ever skipped a prescription due to cost?",
-        options: [
-          { id: "o1", label: "Yes, frequently", order: 1 },
-          { id: "o2", label: "Yes, occasionally", order: 2 },
-          { id: "o3", label: "No", order: 3 },
-        ],
-      },
-      {
-        id: "q4", order: 4, type: "textarea", isRequired: false,
-        title: "What would most help you manage prescription drug costs?",
-      },
-    ],
-  },
-  "3": {
-    id: "3",
-    title: "Remote Work Tool Preferences",
-    description:
-      "Help us compare productivity tools used by distributed teams across different industries. Your insights will help build better remote-work solutions for teams worldwide.",
-    status: "active",
-    categories: [
-      { id: "tech", label: "Tech" },
-      { id: "productivity", label: "Productivity" },
-    ],
-    budget: { rewardPerVoter: { amount: 1.25, currency: "USD" } },
-    progress: { responseCount: 52, targetResponses: 180 },
-    estimatedMinutes: 6,
-    timeInfo: {
-      closesAt: "2026-03-30T23:59:00Z",
-      daysRemaining: 14,
-      isOpen: true,
-      displayLabel: "Mar 16 – Mar 30, 2026",
-    },
-    requirements: [{ id: "r1", type: "Age", value: "18+" }],
-    canParticipate: true,
-    hasVoted: false,
-    questions: [
-      {
-        id: "q1", order: 1, type: "single_choice", isRequired: true,
-        title: "How many days per week do you work remotely?",
-        options: [
-          { id: "o1", label: "Full-time (5 days)", order: 1 },
-          { id: "o2", label: "4 days", order: 2 },
-          { id: "o3", label: "3 days", order: 3 },
-          { id: "o4", label: "1–2 days", order: 4 },
-          { id: "o5", label: "I don't work remotely", order: 5 },
-        ],
-      },
-      {
-        id: "q2", order: 2, type: "multiple_choice", isRequired: true,
-        title: "Which collaboration tools does your team use? (Select all that apply)",
-        options: [
-          { id: "o1", label: "Slack / Teams", order: 1 },
-          { id: "o2", label: "Zoom / Meet", order: 2 },
-          { id: "o3", label: "Notion / Confluence", order: 3 },
-          { id: "o4", label: "Jira / Asana", order: 4 },
-          { id: "o5", label: "GitHub / GitLab", order: 5 },
-        ],
-      },
-      {
-        id: "q3", order: 3, type: "single_choice", isRequired: true,
-        title: "Overall, how productive do you feel working remotely?",
-        options: [
-          { id: "o1", label: "Much more productive", order: 1 },
-          { id: "o2", label: "Slightly more productive", order: 2 },
-          { id: "o3", label: "About the same", order: 3 },
-          { id: "o4", label: "Less productive", order: 4 },
-        ],
-      },
-      {
-        id: "q4", order: 4, type: "textarea", isRequired: false,
-        title: "What's the biggest challenge you face while working remotely?",
-      },
-    ],
-  },
-  "4": {
-    id: "4",
-    title: "Personal Banking Mobile UX",
-    description:
-      "Tell us what works and what does not in your banking app experience over the last 3 months. Your feedback helps banks improve their mobile products for everyone.",
-    status: "active",
-    categories: [
-      { id: "finance", label: "Finance" },
-      { id: "tech", label: "Tech" },
-    ],
-    budget: { rewardPerVoter: { amount: 2.75, currency: "USD" } },
-    progress: { responseCount: 119, targetResponses: 250 },
-    estimatedMinutes: 7,
-    timeInfo: {
-      closesAt: "2026-04-10T23:59:00Z",
-      daysRemaining: 25,
-      isOpen: true,
-      displayLabel: "Mar 16 – Apr 10, 2026",
-    },
-    requirements: [
-      { id: "r1", type: "Age", value: "21+" },
-    ],
-    canParticipate: true,
-    hasVoted: false,
-    questions: [
-      {
-        id: "q1", order: 1, type: "single_choice", isRequired: true,
-        title: "How often do you use your bank's mobile app?",
-        options: [
-          { id: "o1", label: "Multiple times a day", order: 1 },
-          { id: "o2", label: "Daily", order: 2 },
-          { id: "o3", label: "A few times a week", order: 3 },
-          { id: "o4", label: "Once a week", order: 4 },
-          { id: "o5", label: "Rarely", order: 5 },
-        ],
-      },
-      {
-        id: "q2", order: 2, type: "multiple_choice", isRequired: true,
-        title: "Which features do you use most in your banking app? (Select all that apply)",
-        options: [
-          { id: "o1", label: "Balance / transactions", order: 1 },
-          { id: "o2", label: "Money transfers", order: 2 },
-          { id: "o3", label: "Bill payments", order: 3 },
-          { id: "o4", label: "Card management", order: 4 },
-          { id: "o5", label: "Savings / investments", order: 5 },
-        ],
-      },
-      {
-        id: "q3", order: 3, type: "single_choice", isRequired: true,
-        title: "How satisfied are you with your banking app overall?",
-        options: [
-          { id: "o1", label: "Very Satisfied", order: 1 },
-          { id: "o2", label: "Satisfied", order: 2 },
-          { id: "o3", label: "Neutral", order: 3 },
-          { id: "o4", label: "Dissatisfied", order: 4 },
-          { id: "o5", label: "Very Dissatisfied", order: 5 },
-        ],
-      },
-      {
-        id: "q4", order: 4, type: "single_choice", isRequired: true,
-        title: "Have you experienced technical issues with your banking app in the past month?",
-        options: [
-          { id: "o1", label: "Yes, frequently", order: 1 },
-          { id: "o2", label: "Yes, occasionally", order: 2 },
-          { id: "o3", label: "No issues", order: 3 },
-        ],
-      },
-      {
-        id: "q5", order: 5, type: "textarea", isRequired: false,
-        title: "What feature would most improve your banking app experience?",
-      },
-    ],
-  },
-};
-
-// ─── Category tag colors ──────────────────────────────────────────────────────
-
 const CAT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  Health:       { bg: palette.successLight, text: palette.success, border: palette.success },
-  Finance:      { bg: palette.primaryNegative, text: palette.primary, border: palette.primary },
-  Tech:         { bg: palette.primaryNegative, text: palette.primary, border: palette.primary },
+  Health: { bg: palette.successLight, text: palette.success, border: palette.success },
+  Finance: { bg: palette.primaryNegative, text: palette.primary, border: palette.primary },
+  Tech: { bg: palette.primaryNegative, text: palette.primary, border: palette.primary },
   Productivity: { bg: palette.surfaceMuted, text: palette.textSecondary, border: palette.border },
-  Lifestyle:    { bg: palette.orangeLight, text: palette.orange, border: palette.orange },
+  Lifestyle: { bg: palette.orangeLight, text: palette.orange, border: palette.orange },
 };
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SurveyDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { setSurvey } = useVoting();
   const insets = useSafeAreaInsets();
 
-  const survey = id ? (SURVEY_DETAILS[id] ?? null) : null;
+  const [survey, setLoadedSurvey] = useState<SurveyDetail | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSurvey = async () => {
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+
+        if (!id) {
+          throw new Error("Missing survey id.");
+        }
+
+        const registryItem = await loadRegisteredSurveyDetail(id);
+
+        if (!registryItem) {
+          throw new Error("Survey not found in the public registry.");
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        setLoadedSurvey(registryItem.detail);
+      } catch (error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setLoadedSurvey(null);
+        setErrorMessage(error instanceof Error ? error.message : "Unable to load survey details.");
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadSurvey();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={["top"]}>
+        <View style={styles.centerBox}>
+          <ActivityIndicator color={palette.primary} />
+          <Text style={styles.loadingText}>Loading survey details...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!survey) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.centerBox}>
-          <ActivityIndicator color={palette.primary} />
+          <Text style={styles.errorTitle}>Survey unavailable</Text>
+          <Text style={styles.errorText}>{errorMessage ?? "Unable to load this survey."}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
+            <Text style={styles.retryButtonText}>Back</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -330,7 +113,6 @@ export default function SurveyDetailsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* ── Header ── */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Feather name="chevron-left" size={20} color={palette.textSecondary} />
@@ -340,13 +122,11 @@ export default function SurveyDetailsScreen() {
         </Text>
       </View>
 
-      {/* ── Scrollable Content ── */}
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Survey Stats */}
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Survey Info</Text>
           <View style={styles.statsRow}>
@@ -367,7 +147,6 @@ export default function SurveyDetailsScreen() {
           </View>
         </View>
 
-        {/* Timeline */}
         {survey.timeInfo && (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Timeline</Text>
@@ -377,13 +156,12 @@ export default function SurveyDetailsScreen() {
             </View>
             {survey.timeInfo.daysRemaining != null && (
               <Text style={styles.daysRemaining}>
-                ⏱ {survey.timeInfo.daysRemaining} days remaining
+                {survey.timeInfo.daysRemaining} days remaining
               </Text>
             )}
           </View>
         )}
 
-        {/* Categories */}
         {survey.categories.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Categories</Text>
@@ -410,21 +188,18 @@ export default function SurveyDetailsScreen() {
           </View>
         )}
 
-        {/* Reward */}
         {survey.budget?.rewardPerVoter && (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Reward</Text>
             <View style={styles.rewardBadge}>
               <Feather name="award" size={16} color={palette.success} />
               <Text style={styles.rewardText}>
-                {survey.budget.rewardPerVoter.amount}{" "}
-                {survey.budget.rewardPerVoter.currency} upon completion
+                {survey.budget.rewardPerVoter.amount} {survey.budget.rewardPerVoter.currency} upon completion
               </Text>
             </View>
           </View>
         )}
 
-        {/* Requirements */}
         {survey.requirements && survey.requirements.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Requirements</Text>
@@ -439,14 +214,12 @@ export default function SurveyDetailsScreen() {
           </View>
         )}
 
-        {/* Description */}
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Description</Text>
           <Text style={styles.description}>{survey.description}</Text>
         </View>
       </ScrollView>
 
-      {/* ── Action Bar ── */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity style={styles.startBtn} onPress={handleStart}>
           <Text style={styles.startBtnText}>Start Voting</Text>
@@ -457,8 +230,6 @@ export default function SurveyDetailsScreen() {
   );
 }
 
-// ─── Styles ───────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -468,6 +239,35 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    paddingHorizontal: 24,
+    gap: 10,
+  },
+  loadingText: {
+    color: palette.textSecondary,
+    fontSize: 14,
+  },
+  errorTitle: {
+    color: palette.primaryDark,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  errorText: {
+    color: palette.textSecondary,
+    fontSize: 14,
+    textAlign: "center",
+    lineHeight: 21,
+  },
+  retryButton: {
+    marginTop: 8,
+    backgroundColor: palette.primary,
+    borderRadius: 10,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  retryButtonText: {
+    color: palette.white,
+    fontWeight: "700",
+    fontSize: 14,
   },
   header: {
     flexDirection: "row",
@@ -628,5 +428,3 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
-
-

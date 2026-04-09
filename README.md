@@ -42,7 +42,15 @@ sdk.dir=C:\\Users\\<YourUsername>\\AppData\\Local\\Android\\Sdk
 
 **To find your SDK path:** Open Android Studio → Settings → Appearance & Behavior → System Settings → Android SDK
 
-### 3. Run The Project
+### 3. Configure Public Registry RPC
+
+Set the survey registry RPC URL before starting Expo:
+
+```powershell
+$env:EXPO_PUBLIC_REGISTRY_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
+```
+
+### 4. Run The Project
 
 Start the Expo dev server:
 
