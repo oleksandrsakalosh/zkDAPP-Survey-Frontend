@@ -73,6 +73,17 @@ To test credential sharing with Valera wallet, you'll need both apps running on 
 2. Set up Valera wallet - see [Valera README](../valera/README.md#quick-setup) for setup instructions
 3. Both apps will communicate via deep links on the same emulator
 
+## Proof Generator (Test Flow)
+
+- Start proof service in a separate terminal:
+
+```bash
+npm run proof:service
+```
+
+- use emulator for easiest localhost routing
+- place your `.ptau` file under `zk/ptau/` before running proof generation
+- full native in-app proof generator module is in future-future work and not implemented yet.
 
 ## Useful Scripts
 
@@ -81,6 +92,7 @@ To test credential sharing with Valera wallet, you'll need both apps running on 
 - `npm run ios` - run on iOS simulator/device
 - `npm run web` - run web target
 - `npm run lint` - run lint checks
+- `npm run proof:service` - local proof service for Proof Generator test flow
 
 ## Project Structure
 

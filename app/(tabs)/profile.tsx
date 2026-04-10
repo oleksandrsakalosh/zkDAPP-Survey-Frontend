@@ -12,6 +12,8 @@ import {
 
 import { palette } from "@/theme/palette";
 import RequestBuilder from "@/components/RequestBuilder";
+import SdJwtParser from "@/components/SdJwtParser";
+import ProofGenerator from "@/components/ProofGenerator";
 import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
 import { formatWalletAddress } from "@/utils/vocdoni/wallet";
 
@@ -20,6 +22,8 @@ export default function Profile() {
     const [rewardUpdatesEnabled, setRewardUpdatesEnabled] = useState(true);
     const [activityEnabled, setActivityEnabled] = useState(false);
     const [showRequestBuilder, setShowRequestBuilder] = useState(false);
+    const [showSdJwtParser, setShowSdJwtParser] = useState(false);
+    const [showProofGenerator, setShowProofGenerator] = useState(false);
     const { walletAddress, isLoading, error } = useDeviceWallet();
     const walletDisplay = walletAddress ? formatWalletAddress(walletAddress) : "Wallet unavailable";
     const walletSubtitle = isLoading
@@ -105,10 +109,24 @@ export default function Profile() {
                 <Text style={styles.sectionLabel}>Test Tools</Text>
                 <View style={styles.card}>
                     <Pressable
-                        style={[styles.row, styles.testToolRow]}
+                        style={[styles.row, styles.testToolRow, styles.rowBorder]}
                         onPress={() => setShowRequestBuilder(true)}
                     >
                         <Text style={styles.testToolText}>Open Request Builder</Text>
+                        <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
+                    </Pressable>
+                    <Pressable
+                        style={[styles.row, styles.testToolRow, styles.rowBorder]}
+                        onPress={() => setShowSdJwtParser(true)}
+                    >
+                        <Text style={styles.testToolText}>SD-JWT Parser</Text>
+                        <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
+                    </Pressable>
+                    <Pressable
+                        style={[styles.row, styles.testToolRow]}
+                        onPress={() => setShowProofGenerator(true)}
+                    >
+                        <Text style={styles.testToolText}>Proof Generator</Text>
                         <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
                     </Pressable>
                 </View>
@@ -120,6 +138,24 @@ export default function Profile() {
                     onRequestClose={() => setShowRequestBuilder(false)}
                 >
                     <RequestBuilder onClose={() => setShowRequestBuilder(false)} />
+                </Modal>
+
+                <Modal
+                    visible={showSdJwtParser}
+                    animationType="slide"
+                    presentationStyle="formSheet"
+                    onRequestClose={() => setShowSdJwtParser(false)}
+                >
+                    <SdJwtParser onClose={() => setShowSdJwtParser(false)} />
+                </Modal>
+
+                <Modal
+                    visible={showProofGenerator}
+                    animationType="slide"
+                    presentationStyle="formSheet"
+                    onRequestClose={() => setShowProofGenerator(false)}
+                >
+                    <ProofGenerator onClose={() => setShowProofGenerator(false)} />
                 </Modal>
             </ScrollView>
     );
