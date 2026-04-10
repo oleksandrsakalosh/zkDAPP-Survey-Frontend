@@ -7,7 +7,7 @@ import { CreatedSurveyCardData, ParticipatedSurveySummary, SurveyDraft } from "@
 import { palette } from "@/theme/palette";
 import { router, useLocalSearchParams } from "expo-router";
 import { publishSurveyDraft } from "@/utils/vocdoni/publishSurvey";
-import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
+import { fetchElectionAsSurveyDetail } from "@/utils/vocdoni/fetchElection";
 
 const { width } = Dimensions.get("window");
 
@@ -85,31 +85,91 @@ const formatShortDate = (dateIso: string) =>
         day: "numeric",
     }).format(new Date(dateIso));
 
+// ─── Gaming survey (5 questions) ─────────────────────────────────────────────
+
 const buildQuickVocdoniTestDraft = (): SurveyDraft => {
     const now = new Date();
     const endDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const surveySuffix = now.toISOString().slice(11, 19).replace(/:/g, "-");
 
     return {
-        name: `Vocdoni Test Survey ${surveySuffix}`,
-        description: "Quick integration test survey created directly from the My Surveys screen.",
+        name: "Gamer Habits & Preferences Survey",
+        description: "A quick survey about your gaming habits, favourite genres and platforms. Your answers are anonymous and help us understand the modern gaming landscape.",
         startDate: now.toISOString(),
         endDate: endDate.toISOString(),
-        tags: ["vocdoni", "test"],
-        category: "Vocdoni DEV",
+        tags: ["gaming", "games", "survey"],
+        category: "Gaming",
         rewardPerVoter: 0,
         voterCap: 5,
         requirements: [],
         questions: [
             {
-                id: "vocdoni-test-question-1",
+                id: "gq1",
                 order: 1,
                 type: "single_choice",
-                title: "Did this Vocdoni test survey publish successfully?",
+                title: "How many hours per week do you spend playing video games?",
                 isRequired: true,
                 options: [
-                    { id: "yes", label: "Yes", order: 0 },
-                    { id: "no", label: "No", order: 1 },
+                    { id: "gq1-o1", label: "Less than 1 hour", order: 0 },
+                    { id: "gq1-o2", label: "1–5 hours", order: 1 },
+                    { id: "gq1-o3", label: "5–15 hours", order: 2 },
+                    { id: "gq1-o4", label: "15–30 hours", order: 3 },
+                    { id: "gq1-o5", label: "More than 30 hours", order: 4 },
+                ],
+            },
+            {
+                id: "gq2",
+                order: 2,
+                type: "single_choice",
+                title: "Which gaming platform do you use most often?",
+                isRequired: true,
+                options: [
+                    { id: "gq2-o1", label: "PC / Steam", order: 0 },
+                    { id: "gq2-o2", label: "PlayStation", order: 1 },
+                    { id: "gq2-o3", label: "Xbox", order: 2 },
+                    { id: "gq2-o4", label: "Nintendo Switch", order: 3 },
+                    { id: "gq2-o5", label: "Mobile (iOS / Android)", order: 4 },
+                ],
+            },
+            {
+                id: "gq3",
+                order: 3,
+                type: "single_choice",
+                title: "What is your favourite game genre?",
+                isRequired: true,
+                options: [
+                    { id: "gq3-o1", label: "Action / Adventure", order: 0 },
+                    { id: "gq3-o2", label: "RPG (Role-Playing Game)", order: 1 },
+                    { id: "gq3-o3", label: "FPS / Shooter", order: 2 },
+                    { id: "gq3-o4", label: "Strategy / Simulation", order: 3 },
+                    { id: "gq3-o5", label: "Sports / Racing", order: 4 },
+                ],
+            },
+            {
+                id: "gq4",
+                order: 4,
+                type: "single_choice",
+                title: "Do you prefer playing solo or with others online?",
+                isRequired: true,
+                options: [
+                    { id: "gq4-o1", label: "Always solo", order: 0 },
+                    { id: "gq4-o2", label: "Mostly solo, sometimes online", order: 1 },
+                    { id: "gq4-o3", label: "Mix of both equally", order: 2 },
+                    { id: "gq4-o4", label: "Mostly online, sometimes solo", order: 3 },
+                    { id: "gq4-o5", label: "Always online multiplayer", order: 4 },
+                ],
+            },
+            {
+                id: "gq5",
+                order: 5,
+                type: "single_choice",
+                title: "How satisfied are you with the current state of the gaming industry?",
+                isRequired: true,
+                options: [
+                    { id: "gq5-o1", label: "Very satisfied", order: 0 },
+                    { id: "gq5-o2", label: "Somewhat satisfied", order: 1 },
+                    { id: "gq5-o3", label: "Neutral", order: 2 },
+                    { id: "gq5-o4", label: "Somewhat dissatisfied", order: 3 },
+                    { id: "gq5-o5", label: "Very dissatisfied", order: 4 },
                 ],
             },
         ],
@@ -130,10 +190,12 @@ export default function MySurveys() {
     const [createdSurveys, setCreatedSurveys] = useState<CreatedSurveyCardData[]>(INITIAL_CREATED_SURVEYS);
     const [participatedSurveys, setParticipatedSurveys] = useState<ParticipatedSurveySummary[]>(INITIAL_PARTICIPATED_SURVEYS);
     const [publishedExplorerUrls, setPublishedExplorerUrls] = useState<Record<string, string>>({});
-    const [submittedVoteIds, setSubmittedVoteIds] = useState<Record<string, string>>({});
-    const [latestPublishedTestSurveyId, setLatestPublishedTestSurveyId] = useState<string | null>(null);
+
+    // Хранится ТОЛЬКО electionId — никаких данных о survey
+    const [latestElectionId, setLatestElectionId] = useState<string | null>(null);
+
     const [isQuickPublishing, setIsQuickPublishing] = useState(false);
-    const [isQuickVoting, setIsQuickVoting] = useState(false);
+    const [isStartingVotingFlow, setIsStartingVotingFlow] = useState(false);
 
     useEffect(() => {
         setActiveTab(normalizeTab(params.tab));
@@ -153,13 +215,15 @@ export default function MySurveys() {
                 ...current,
                 [publishedElection.electionId]: publishedElection.explorerUrl,
             }));
-            setLatestPublishedTestSurveyId(publishedElection.electionId);
+
+            // Сохраняем только ID — данные будут получены с Vocdoni при запуске флоу
+            setLatestElectionId(publishedElection.electionId);
 
             setCreatedSurveys((current) => [
                 {
                     id: publishedElection.electionId,
                     title: draft.name,
-                    category: draft.category || "Vocdoni DEV",
+                    category: draft.category || "Gaming",
                     status: "active",
                     rewardPerVoter: draft.rewardPerVoter ?? 0,
                     endsAt: draft.endDate ? formatShortDate(draft.endDate) : null,
@@ -171,10 +235,8 @@ export default function MySurveys() {
             ]);
 
             Alert.alert(
-                "Vocdoni test survey created",
-                publishedElection.rotatedWallet
-                    ? `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list.\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
-                    : `Election ${publishedElection.electionId} was created on Vocdoni DEV and added to your list.`
+                "Gaming survey created on Vocdoni",
+                `Election ID: ${publishedElection.electionId}\n\nTap "Test voting with created survey" to fetch the survey from Vocdoni and go through the full voting flow.`
             );
         } catch (error) {
             Alert.alert(
@@ -186,91 +248,67 @@ export default function MySurveys() {
         }
     };
 
-    const handleQuickVoteTest = async () => {
-        if (isQuickVoting) return;
+    /**
+     * Получает данные election с Vocdoni по сохранённому electionId,
+     * затем запускает полный UI флоу голосования.
+     * Никакие локальные данные о структуре survey не используются.
+     */
+    const handleStartVotingFlow = async () => {
+        if (isStartingVotingFlow) return;
 
-        if (!latestPublishedTestSurveyId) {
+        if (!latestElectionId) {
             Alert.alert(
-                "No test survey yet",
-                "Create a Vocdoni test survey first, then use the vote button."
+                "No published survey yet",
+                "First create a survey via \"Create Test Survey on Vocdoni\", then tap this button."
             );
             return;
         }
 
-        const targetSurvey = createdSurveys.find((survey) => survey.id === latestPublishedTestSurveyId);
-        if (!targetSurvey) {
-            Alert.alert(
-                "Survey not found",
-                "The latest test survey is no longer in the local list. Create a new test survey and try again."
-            );
-            return;
-        }
+        setIsStartingVotingFlow(true);
+        console.log('[mySurveys] votingFlow:start', { electionId: latestElectionId });
 
         try {
-            setIsQuickVoting(true);
+            console.log('[mySurveys] votingFlow:fetchingFromVocdoni', { electionId: latestElectionId });
 
-            const submittedVote = await voteSurvey(latestPublishedTestSurveyId, [0]);
+            // Единственный источник данных — Vocdoni
+            const surveyDetail = await fetchElectionAsSurveyDetail(latestElectionId);
 
-            setSubmittedVoteIds((current) => ({
-                ...current,
-                [latestPublishedTestSurveyId]: submittedVote.voteId,
-            }));
+            console.log('[mySurveys] votingFlow:fetchedOk', {
+                electionId: latestElectionId,
+                title: surveyDetail.title,
+                questionCount: surveyDetail.questions?.length ?? 0,
+            });
 
-            if (!submittedVote.alreadyVoted) {
-                setCreatedSurveys((current) =>
-                    current.map((survey) =>
-                        survey.id === latestPublishedTestSurveyId
-                            ? {
-                                ...survey,
-                                responsesCurrent: (survey.responsesCurrent ?? 0) + 1,
-                            }
-                            : survey
-                    )
-                );
-
-                setParticipatedSurveys((current) => {
-                    if (current.some((survey) => survey.id === latestPublishedTestSurveyId)) {
-                        return current;
-                    }
-
-                    return [
-                        {
-                            id: latestPublishedTestSurveyId,
-                            title: targetSurvey.title,
-                            category: targetSurvey.category,
-                            votedAt: formatShortDate(new Date().toISOString()),
-                            rewardStatus: "not_applicable",
-                        },
-                        ...current,
-                    ];
-                });
-            }
-
-            Alert.alert(
-                submittedVote.alreadyVoted ? "Vote already recorded" : "Test vote submitted",
-                submittedVote.alreadyVoted
-                    ? `This device wallet already voted on election ${latestPublishedTestSurveyId}.\n\nVote ID: ${submittedVote.voteId}`
-                    : `Vote ID: ${submittedVote.voteId}\n\nElection: ${latestPublishedTestSurveyId}`
-            );
+            router.push({
+                pathname: `/voting/${latestElectionId}` as any,
+                params: {
+                    electionId: latestElectionId,
+                    // Передаём данные, полученные с Vocdoni, как JSON-строку в параметре маршрута
+                    surveyJson: JSON.stringify(surveyDetail),
+                },
+            });
         } catch (error) {
+            console.error('[mySurveys] votingFlow:fetchError', {
+                electionId: latestElectionId,
+                error: error instanceof Error ? error.message : error,
+            });
             Alert.alert(
-                "Vote failed",
-                error instanceof Error ? error.message : "Unable to submit the test vote to Vocdoni."
+                "Failed to load survey from Vocdoni",
+                error instanceof Error
+                    ? error.message
+                    : "Unable to fetch the election data. Please try again."
             );
         } finally {
-            setIsQuickVoting(false);
+            setIsStartingVotingFlow(false);
         }
     };
 
     const handleManageSurvey = (id: string) => {
         const explorerUrl = publishedExplorerUrls[id];
-        const voteId = submittedVoteIds[id];
         if (explorerUrl) {
             Alert.alert(
                 "Vocdoni test survey",
-                voteId
-                    ? `Election ${id}\n\nExplorer: ${explorerUrl}\n\nLatest vote: ${voteId}`
-                    : `Election ${id}\n\nExplorer: ${explorerUrl}`
+                `Election ${id}\n\nExplorer: ${explorerUrl}`
             );
             return;
         }
@@ -327,21 +365,21 @@ export default function MySurveys() {
                 {activeTab === "created" ? (
                     <CreatedSurveys
                         surveys={createdSurveys}
-                        onCreateNew={() => {router.push("/create-survey")}}
+                        onCreateNew={() => { router.push("/create-survey"); }}
                         onQuickPublishTest={handleQuickPublishTest}
                         isQuickPublishing={isQuickPublishing}
-                        onQuickVoteTest={handleQuickVoteTest}
-                        canQuickVoteTest={Boolean(latestPublishedTestSurveyId)}
-                        isQuickVoting={isQuickVoting}
+                        onStartVotingFlow={handleStartVotingFlow}
+                        canStartVotingFlow={Boolean(latestElectionId)}
+                        isStartingVotingFlow={isStartingVotingFlow}
                         onManage={handleManageSurvey}
-                        onEdit={() => {}}
-                        onResults={(id) => { router.push(`/survey/results/${id}`) }}
+                        onEdit={() => { }}
+                        onResults={(id) => { router.push(`/survey/results/${id}`); }}
                     />
                 ) : (
                     <ParticipatedSurveys surveys={participatedSurveys} />
                 )}
             </View>
-            
+
         </View>
     );
 }

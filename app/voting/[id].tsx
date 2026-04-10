@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -298,16 +298,33 @@ const CAT_COLORS: Record<string, { bg: string; text: string; border: string }> =
   Tech:         { bg: palette.primaryNegative, text: palette.primary, border: palette.primary },
   Productivity: { bg: palette.surfaceMuted, text: palette.textSecondary, border: palette.border },
   Lifestyle:    { bg: palette.orangeLight, text: palette.orange, border: palette.orange },
+  Gaming:       { bg: palette.primaryNegative, text: palette.primary, border: palette.primary },
 };
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SurveyDetailsScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const { setSurvey } = useVoting();
+  const { id, surveyJson, electionId } = useLocalSearchParams<{
+    id: string;
+    surveyJson?: string;
+    electionId?: string;
+  }>();
+  const { setSurvey, setElectionId } = useVoting();
   const insets = useSafeAreaInsets();
 
-  const survey = id ? (SURVEY_DETAILS[id] ?? null) : null;
+  // Если передан surveyJson — используем его (реальный published election).
+  // Иначе — берём из статичного словаря (dummy surveys из Explore).
+  let survey: SurveyDetail | null = null;
+
+  if (surveyJson) {
+    try {
+      survey = JSON.parse(surveyJson) as SurveyDetail;
+    } catch {
+      survey = null;
+    }
+  } else {
+    survey = id ? (SURVEY_DETAILS[id] ?? null) : null;
+  }
 
   if (!survey) {
     return (
@@ -320,7 +337,11 @@ export default function SurveyDetailsScreen() {
   }
 
   const handleStart = () => {
-    setSurvey(survey);
+    setSurvey(survey!);
+    // Если это реальный Vocdoni election — сохраняем electionId в контексте
+    if (electionId) {
+      setElectionId(electionId);
+    }
     router.push(`/voting/${id}/eligibility` as any);
   };
 
@@ -444,6 +465,16 @@ export default function SurveyDetailsScreen() {
           <Text style={styles.cardLabel}>Description</Text>
           <Text style={styles.description}>{survey.description}</Text>
         </View>
+
+        {/* Vocdoni badge — показываем только для реальных elections */}
+        {electionId && (
+          <View style={styles.vocdoniCard}>
+            <Feather name="shield" size={14} color={palette.primary} />
+            <Text style={styles.vocdoniText}>
+              Live Vocdoni election · your vote will be recorded on-chain
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* ── Action Bar ── */}
@@ -606,6 +637,23 @@ const styles = StyleSheet.create({
     color: palette.textSecondary,
     lineHeight: 22,
   },
+  vocdoniCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: palette.primaryNegative,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: palette.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  vocdoniText: {
+    flex: 1,
+    fontSize: 13,
+    color: palette.primary,
+    fontWeight: "600",
+  },
   actionBar: {
     backgroundColor: palette.white,
     borderTopWidth: 1,
@@ -628,5 +676,3 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 });
-
-

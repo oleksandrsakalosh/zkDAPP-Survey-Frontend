@@ -11,9 +11,10 @@ type Props = {
     onCreateNew: () => void;
     onQuickPublishTest: () => void;
     isQuickPublishing?: boolean;
-    onQuickVoteTest: () => void;
-    canQuickVoteTest?: boolean;
-    isQuickVoting?: boolean;
+    /** Запускает полный UI флоу голосования для последнего опубликованного survey */
+    onStartVotingFlow: () => void;
+    canStartVotingFlow?: boolean;
+    isStartingVotingFlow?: boolean;
     onManage: (id: string) => void;
     onEdit: (id: string) => void;
     onResults: (id: string) => void;
@@ -24,9 +25,9 @@ export default function CreatedSurveys({
     onCreateNew,
     onQuickPublishTest,
     isQuickPublishing = false,
-    onQuickVoteTest,
-    canQuickVoteTest = false,
-    isQuickVoting = false,
+    onStartVotingFlow,
+    canStartVotingFlow = false,
+    isStartingVotingFlow = false,
     onManage,
     onEdit,
     onResults,
@@ -63,6 +64,12 @@ export default function CreatedSurveys({
         return data;
     }, [activeDraft, completed]);
 
+    const votingFlowLabel = isStartingVotingFlow
+        ? "Opening voting flow..."
+        : canStartVotingFlow
+            ? "Test voting with created survey"
+            : "Create Test Survey First";
+
     return (
         <View style={styles.container}>
             <FlatList
@@ -89,6 +96,7 @@ export default function CreatedSurveys({
             />
 
             <View style={styles.stickyWrap}>
+                {/* Кнопка 1: опубликовать gaming survey на Vocdoni */}
                 <Pressable
                     onPress={onQuickPublishTest}
                     disabled={isQuickPublishing}
@@ -110,35 +118,34 @@ export default function CreatedSurveys({
                     </Text>
                 </Pressable>
 
+                {/* Кнопка 2: запустить полный UI флоу голосования */}
                 <Pressable
-                    onPress={onQuickVoteTest}
-                    disabled={!canQuickVoteTest || isQuickVoting}
+                    onPress={onStartVotingFlow}
+                    disabled={!canStartVotingFlow || isStartingVotingFlow}
                     android_ripple={{ color: palette.primaryLight }}
                     style={({ pressed }) => [
                         styles.secondaryBtn,
-                        pressed && canQuickVoteTest && !isQuickVoting && styles.secondaryBtnPressed,
-                        (!canQuickVoteTest || isQuickVoting) && styles.secondaryBtnDisabled,
+                        pressed && canStartVotingFlow && !isStartingVotingFlow && styles.secondaryBtnPressed,
+                        (!canStartVotingFlow || isStartingVotingFlow) && styles.secondaryBtnDisabled,
                     ]}
                 >
                     <MaterialIcons
                         name="how-to-vote"
                         size={18}
-                        color={canQuickVoteTest ? palette.primary : palette.textMuted}
+                        color={canStartVotingFlow ? palette.primary : palette.textMuted}
                         style={styles.stickyIcon}
                     />
                     <Text
                         style={[
                             styles.secondaryText,
-                            !canQuickVoteTest && styles.secondaryTextDisabled,
+                            !canStartVotingFlow && styles.secondaryTextDisabled,
                         ]}
                     >
-                        {isQuickVoting
-                            ? "Submitting Test Vote..."
-                            : canQuickVoteTest
-                                ? "Vote Latest Test Survey"
-                                : "Create Test Survey First"}
+                        {votingFlowLabel}
                     </Text>
                 </Pressable>
+
+                {/* Кнопка 3: открыть Survey Builder */}
                 <Pressable
                     onPress={onCreateNew}
                     android_ripple={{ color: palette.primaryLight }}

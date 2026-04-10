@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import Feather from "@expo/vector-icons/Feather";
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
+import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -21,8 +24,11 @@ export default function ReviewScreen() {
   const { state } = useVoting();
   const insets = useSafeAreaInsets();
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const questions = state.survey?.questions ?? [];
   const answers = state.answers;
+  const electionId = state.electionId;
 
   const getAnswerLabel = (questionId: string): string => {
     const question = questions.find((q) => q.id === questionId);
@@ -50,7 +56,51 @@ export default function ReviewScreen() {
       : a.selectedOptions.length > 0;
   }).length;
 
-  const handleSubmit = () => {
+  /**
+   * Преобразует ответы пользователя в массив числовых choices для Vocdoni.
+   * Каждый вопрос — один choice: индекс выбранного варианта (0-based).
+   * Для multiple_choice берём первый выбранный вариант (Vocdoni не поддерживает
+   * multi-select в базовом Election.from, поэтому отправляем первый).
+   * Для textarea — всегда 0 (единственный "choice" у text-вопроса в Vocdoni).
+   */
+  const buildVocdoniChoices = (): number[] => {
+    return questions.map((q) => {
+      const answer = answers.find((a) => a.questionId === q.id);
+
+      if (q.type === "textarea") return 0;
+
+      if (!answer || answer.selectedOptions.length === 0) return 0;
+
+      const firstSelectedId = answer.selectedOptions[0];
+      const optionIndex = (q.options ?? []).findIndex((o) => o.id === firstSelectedId);
+      return optionIndex >= 0 ? optionIndex : 0;
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+
+    // Если это реальный Vocdoni election — отправляем голос на блокчейн
+    if (electionId) {
+      setIsSubmitting(true);
+      try {
+        const choices = buildVocdoniChoices();
+        await voteSurvey(electionId, choices);
+        router.push(`/voting/${id}/success` as any);
+      } catch (error) {
+        Alert.alert(
+          "Vote submission failed",
+          error instanceof Error
+            ? error.message
+            : "Unable to submit your vote to Vocdoni. Please try again."
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
+    // Для dummy surveys (Explore) — просто переходим на success без реального вызова
     router.push(`/voting/${id}/success` as any);
   };
 
@@ -58,7 +108,7 @@ export default function ReviewScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} disabled={isSubmitting}>
           <Feather name="chevron-left" size={20} color={palette.textSecondary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Review & Submit</Text>
@@ -78,9 +128,21 @@ export default function ReviewScreen() {
           <Text style={styles.summaryTitle}>Ready to Submit?</Text>
           <Text style={styles.summaryText}>
             You've answered {answeredCount} of {questions.length} questions.
-            Your responses will be securely submitted and verified.
+            {electionId
+              ? " Your vote will be securely recorded on the Vocdoni blockchain."
+              : " Your responses will be securely submitted and verified."}
           </Text>
         </View>
+
+        {/* Vocdoni notice */}
+        {electionId && (
+          <View style={styles.vocdoniNotice}>
+            <Feather name="shield" size={15} color={palette.primary} />
+            <Text style={styles.vocdoniNoticeText}>
+              Live Vocdoni election · submitting will record your vote on-chain
+            </Text>
+          </View>
+        )}
 
         {/* Answered questions grid */}
         <View style={styles.card}>
@@ -129,9 +191,22 @@ export default function ReviewScreen() {
 
       {/* ── Action Bar ── */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-          <Text style={styles.submitBtnText}>Confirm & Submit</Text>
-          <Feather name="check" size={16} color={palette.white} />
+        <TouchableOpacity
+          style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
+          onPress={handleSubmit}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <ActivityIndicator size="small" color={palette.white} />
+              <Text style={styles.submitBtnText}>Submitting to Vocdoni…</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.submitBtnText}>Confirm & Submit</Text>
+              <Feather name="check" size={16} color={palette.white} />
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -211,6 +286,23 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textAlign: "center",
     maxWidth: 280,
+  },
+  vocdoniNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: palette.primaryNegative,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: palette.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  vocdoniNoticeText: {
+    flex: 1,
+    fontSize: 13,
+    color: palette.primary,
+    fontWeight: "600",
   },
   card: {
     backgroundColor: palette.white,
@@ -316,11 +408,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
+  submitBtnDisabled: {
+    opacity: 0.7,
+  },
   submitBtnText: {
     color: palette.white,
     fontSize: 15,
     fontWeight: "700",
   },
 });
-
-
