@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet, FlatList } from "react-native";
+import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import CompletedSurveyCard from "@/components/completedSurveyCard";
 import { palette } from "@/theme/palette";
 
@@ -7,13 +7,19 @@ import { ParticipatedSurveySummary } from "@/domain/models";
 
 type Props = {
     surveys: ParticipatedSurveySummary[];
+    isRefreshing?: boolean;
+    onRefresh?: () => void;
 };
 
 function formatMoney(amount: number) {
     return `$${amount.toFixed(2)}`;
 }
 
-export default function ParticipatedSurveys({ surveys }: Props) {
+export default function ParticipatedSurveys({
+    surveys,
+    isRefreshing = false,
+    onRefresh,
+}: Props) {
     const { totalEarned, votedCount, unpaidCount } = useMemo(() => {
         let earned = 0;
         let unpaid = 0;
@@ -75,6 +81,21 @@ export default function ParticipatedSurveys({ surveys }: Props) {
                     />
                 )}
                 showsVerticalScrollIndicator={false}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isRefreshing}
+                        onRefresh={onRefresh}
+                        tintColor={palette.primary}
+                    />
+                }
+                ListEmptyComponent={
+                    <View style={styles.emptyState}>
+                        <Text style={styles.emptyTitle}>No participated surveys yet</Text>
+                        <Text style={styles.emptyText}>
+                            Surveys you vote on will appear here. Pull down to refresh.
+                        </Text>
+                    </View>
+                }
             />
         </View>
     );
@@ -128,5 +149,26 @@ const styles = StyleSheet.create({
 
     listContent: {
         paddingBottom: 20,
+    },
+    emptyState: {
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.white,
+        paddingHorizontal: 16,
+        paddingVertical: 20,
+        alignItems: "center",
+        gap: 8,
+    },
+    emptyTitle: {
+        color: palette.primaryDark,
+        fontSize: 16,
+        fontWeight: "700",
+    },
+    emptyText: {
+        color: palette.textSecondary,
+        fontSize: 14,
+        textAlign: "center",
+        lineHeight: 20,
     },
 });

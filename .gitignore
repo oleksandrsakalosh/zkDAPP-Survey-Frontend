@@ -46,3 +46,10 @@ app-example
 .vscode/
 
 .idea/
+
+# zk generated artifacts and local proving files
+zk/inputs/
+zk/ptau/
+zk/build/**/proof.json
+zk/build/**/public.json
+zk/build/**/witness.wtns

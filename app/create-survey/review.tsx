@@ -16,6 +16,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { palette } from "@/theme/palette";
 import { useSurveyDraft } from "@/utils/SurveyDraftContext";
+import { registerSurveyInRegistry } from "@/utils/registry/client";
 import { publishSurveyDraft } from "@/utils/vocdoni/publishSurvey";
 
 function money(n: number) {
@@ -102,15 +103,28 @@ export default function SurveyBudgetStep() {
         try {
             setIsPublishing(true);
             const publishedElection = await publishSurveyDraft(nextDraft);
+            let registryTxHash: string | null = null;
+
+            try {
+                const registryRegistration = await registerSurveyInRegistry({
+                    electionId: publishedElection.electionId,
+                    category: nextDraft.category || "General",
+                });
+                registryTxHash = registryRegistration.txHash;
+            } catch (registryError) {
+                console.error("[create-survey] registry:register:error", registryError);
+            }
 
             console.log("[create-survey] publish:success", publishedElection);
             resetDraft();
 
             Alert.alert(
-                "Survey published",
-                publishedElection.rotatedWallet
-                    ? `Election ${publishedElection.electionId} created on Vocdoni DEV.\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
-                    : `Election ${publishedElection.electionId} created on Vocdoni DEV.`
+                registryTxHash ? "Survey published" : "Survey published, registry failed",
+                registryTxHash
+                    ? publishedElection.rotatedWallet
+                        ? `Election ${publishedElection.electionId} created on Vocdoni DEV and registered on-chain.\n\nRegistry tx: ${registryTxHash}\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
+                        : `Election ${publishedElection.electionId} created on Vocdoni DEV and registered on-chain.\n\nRegistry tx: ${registryTxHash}`
+                    : `Election ${publishedElection.electionId} created on Vocdoni DEV, but registry submission failed. The survey will not appear in the public feed until it is registered on-chain.`
             );
 
             router.replace("/(tabs)/mySurveys");
