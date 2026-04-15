@@ -53,7 +53,7 @@ export default function SurveyBudgetStep() {
     const rewardN = parseMoney(rewardPerVoterText);
     const capN = parseIntCap(voterCapText);
 
-    const [anonymity, setAnonymity] = useState(true);
+    const [anonymity, setAnonymity] = useState(draft.anonymity ?? true);
 
     const reward = rewardN && !Number.isNaN(rewardN) ? rewardN : 0;
     const cap = capN && !Number.isNaN(capN) ? capN : 0;
@@ -95,6 +95,7 @@ export default function SurveyBudgetStep() {
             ...draft,
             rewardPerVoter: rewardN === null ? null : rewardN,
             voterCap: capN === null ? null : capN,
+            anonymity
         };
 
         setDraft(nextDraft);
@@ -254,7 +255,10 @@ export default function SurveyBudgetStep() {
 
                         <Switch
                             value={anonymity}
-                            onValueChange={setAnonymity}
+                            onValueChange={(val) => {
+                                setAnonymity(val);
+                                setDraft({ ...draft, anonymity: val });
+                            }}
                             trackColor={{ false: "#E5E7EB", true: palette.primary }}
                             thumbColor="palette.white"
                         />

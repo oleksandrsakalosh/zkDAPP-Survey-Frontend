@@ -84,11 +84,7 @@ export default function QuestionsScreen() {
 
   // ── Navigation ──
 
-  const canGoNext =
-    !question.isRequired ||
-    (question.type === "textarea"
-      ? (answer?.textValue ?? "").trim().length > 0
-      : (answer?.selectedOptions ?? []).length > 0);
+  const canGoNext = !question.isRequired
 
   const handleNext = () => {
     if (currentIndex < totalQuestions - 1) {
@@ -187,25 +183,7 @@ export default function QuestionsScreen() {
             );
           })}
 
-        {/* ── Textarea ── */}
-        {question.type === "textarea" && (
-          <TextInput
-            style={[styles.textArea, { height: textAreaHeight }]}
-            value={answer?.textValue ?? ""}
-            onChangeText={handleTextChange}
-            onContentSizeChange={(event) => {
-              const nextHeight = Math.max(130, Math.ceil(event.nativeEvent.contentSize.height) + 24);
-              setTextAreaHeight(nextHeight);
-            }}
-            placeholder="Share your thoughts here…"
-            placeholderTextColor={palette.textMuted}
-            multiline
-            numberOfLines={5}
-            scrollEnabled={false}
-            textAlignVertical="top"
-          />
-        )}
-
+      
         {/* ── Progress dots ── */}
         <View style={styles.dots}>
           {questions.map((_, i) => (

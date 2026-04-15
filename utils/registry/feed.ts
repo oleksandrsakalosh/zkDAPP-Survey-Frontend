@@ -305,7 +305,7 @@ const normalizeQuestions = (electionValue: Record<string, unknown>): SurveyQuest
         order: index + 1,
         title,
         isRequired: true,
-        type: isTextarea ? "textarea" : allowsMultiple ? "multiple_choice" : "single_choice",
+        type:  allowsMultiple ? "multiple_choice" : "single_choice",
         options,
       };
     })
