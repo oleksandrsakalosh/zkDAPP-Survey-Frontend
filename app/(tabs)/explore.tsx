@@ -87,10 +87,19 @@ export default function Explore() {
         hydrateFeed();
     }, []);
 
+    const surveysWithEligibility = useMemo(
+        () =>
+            surveys.map((survey) => ({
+                ...survey,
+                eligibility: checkEligibility(survey.requirements ?? [], profile),
+            })),
+        [profile, surveys]
+    );
+
     const filteredSurveys = useMemo(() => {
         const loweredQuery = query.trim().toLowerCase();
 
-        let result = surveys.filter((survey) =>
+        let result = surveysWithEligibility.filter((survey) =>
             survey.title.toLowerCase().includes(loweredQuery)
         );
 
@@ -142,7 +151,7 @@ export default function Explore() {
     }, [
         query,
         sortBy,
-        surveys,
+        surveysWithEligibility,
         appliedCategories,
         appliedMinReward,
         appliedOpenOnly,
@@ -340,18 +349,14 @@ export default function Explore() {
                     </View>
                 )}
 
-                {categoryFilteredSurveys.map((survey) => {
-                    const eligibility = checkEligibility(survey.requirements ?? [], profile);
-                    console.log("survey:", survey.title, "requirements:", survey.requirements, "profile:", profile, "result:", eligibility.decision);
-                    return (
-                        <SurveyCard
-                            key={survey.id}
-                            survey={{ ...survey, eligibility }}
-                            onVote={handleViewDetails}
-                            voteLabel="Details"
-                        />
-                    );
-                })}
+                {categoryFilteredSurveys.map((survey) => (
+                    <SurveyCard
+                        key={survey.id}
+                        survey={survey}
+                        onVote={handleViewDetails}
+                        voteLabel="Details"
+                    />
+                ))}
             </ScrollView>
 
             <FilterModal
