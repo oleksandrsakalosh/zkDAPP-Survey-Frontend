@@ -19,6 +19,8 @@ import { SurveyCardData, SortKey } from "@/domain/models";
 import { palette } from "@/theme/palette";
 import { isRegistryConfigured } from "@/utils/registry/client";
 import { loadRegisteredSurveyFeed } from "@/utils/registry/feed";
+import { useEligibilityProfile } from "../hooks/useEligibilityProfile";
+import { checkEligibility } from "@/utils/checkEligibility";
 
 const SORT_LABELS: Record<SortKey, string> = {
     rewardDesc: "Reward ↓",
@@ -79,6 +81,7 @@ export default function Explore() {
             }
         }
     };
+    const { profile } = useEligibilityProfile();
 
     useEffect(() => {
         hydrateFeed();
@@ -337,14 +340,18 @@ export default function Explore() {
                     </View>
                 )}
 
-                {categoryFilteredSurveys.map((survey) => (
-                    <SurveyCard
-                        key={survey.id}
-                        survey={survey}
-                        onVote={handleViewDetails}
-                        voteLabel="Details"
-                    />
-                ))}
+                {categoryFilteredSurveys.map((survey) => {
+                    const eligibility = checkEligibility(survey.requirements ?? [], profile);
+                    console.log("survey:", survey.title, "requirements:", survey.requirements, "profile:", profile, "result:", eligibility.decision);
+                    return (
+                        <SurveyCard
+                            key={survey.id}
+                            survey={{ ...survey, eligibility }}
+                            onVote={handleViewDetails}
+                            voteLabel="Details"
+                        />
+                    );
+                })}
             </ScrollView>
 
             <FilterModal
