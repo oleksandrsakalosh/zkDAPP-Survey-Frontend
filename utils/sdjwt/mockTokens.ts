@@ -1,6 +1,9 @@
-import { CUSTOM_SD_JWT_MOCK_1 } from "@/utils/sdjwt/mocks/customSdJwtMock1";
-import { CUSTOM_SD_JWT_MOCK_2 } from "@/utils/sdjwt/mocks/customSdJwtMock2";
-import { SD_JWT_MOCK_AGE } from "@/utils/sdjwt/mocks/sdJwtMockAge";
+import {
+    OLD_SDJWT_AGE_27,
+    SDJWT_AGE_16,
+    SDJWT_AGE_20,
+    SDJWT_AGE_40,
+} from "@/utils/sdjwt/mocks/sdJwtMockAge";
 
 export interface SdJwtMockToken {
     id: string;
@@ -10,18 +13,23 @@ export interface SdJwtMockToken {
 
 export const SD_JWT_MOCK_TOKENS: SdJwtMockToken[] = [
     {
-        id: "mock-1",
-        label: "Custom SD-JWT Mock 1",
-        token: CUSTOM_SD_JWT_MOCK_1,
+        id: "old-age-27",
+        label: "OLD_SDJWT_AGE_27",
+        token: OLD_SDJWT_AGE_27,
     },
     {
-        id: "mock-2",
-        label: "Custom SD-JWT Mock 2",
-        token: CUSTOM_SD_JWT_MOCK_2,
+        id: "age-16",
+        label: "SDJWT_AGE_16",
+        token: SDJWT_AGE_16,
     },
     {
-        id: "mock-age",
-        label: "Custom SD-JWT Mock Age",
-        token: SD_JWT_MOCK_AGE,
+        id: "age-20",
+        label: "SDJWT_AGE_20",
+        token: SDJWT_AGE_20,
+    },
+    {
+        id: "age-40",
+        label: "SDJWT_AGE_40",
+        token: SDJWT_AGE_40,
     },
 ];

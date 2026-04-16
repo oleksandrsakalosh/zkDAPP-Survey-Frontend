@@ -104,7 +104,8 @@ export default function SurveyDetailsScreen() {
 
   const handleStart = () => {
     setSurvey(survey);
-    router.push(`/voting/${id}/eligibility` as any);
+    const hasRequirements = Array.isArray(survey.requirements) && survey.requirements.length > 0;
+    router.push((hasRequirements ? `/voting/${id}/eligibility` : `/voting/${id}/questions`) as any);
   };
 
   const questionCount = survey.questions?.length ?? 0;
