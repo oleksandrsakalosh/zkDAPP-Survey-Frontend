@@ -23,10 +23,14 @@ import { palette } from "@/theme/palette";
 
 const TAGS = ["Politics", "Finance", "Health", "Education", "Community", "Technology"];
 
-function formatDate(d?: Date | null) {
-  if (!d) return "";
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
+const formatDate = (d: Date) =>
+  d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+  });
 
 export default function CreateSurvey() {
   const { draft, setDraft } = useSurveyDraft();
@@ -233,8 +237,8 @@ export default function CreateSurvey() {
           {Platform.OS === "android" && pickerOpen && (
             <DateTimePicker
               value={tempDate}
-              mode="date"
-              display="calendar"
+              mode="datetime"
+              display="default"
               onChange={onChangeAndroid}
               minimumDate={pickerMode === "end" && startDate ? startDate : undefined}
             />
@@ -244,7 +248,7 @@ export default function CreateSurvey() {
           {Platform.OS === "ios" && (
             <DateTimePickerModal
               isVisible={pickerOpen}
-              mode="date"
+              mode="datetime"
               date={
                 pickerMode === "start"
                   ? startDate ?? new Date()
