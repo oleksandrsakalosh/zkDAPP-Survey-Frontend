@@ -26,7 +26,7 @@ const CAT_COLORS: Record<string, { bg: string; text: string; border: string }> =
 
 export default function SurveyDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { setSurvey } = useVoting();
+  const { setSurvey, setElectionId } = useVoting();
   const insets = useSafeAreaInsets();
 
   const [survey, setLoadedSurvey] = useState<SurveyDetail | null>(null);
@@ -104,6 +104,7 @@ export default function SurveyDetailsScreen() {
 
   const handleStart = () => {
     setSurvey(survey);
+    if (id) setElectionId(id);
     router.push(`/voting/${id}/eligibility` as any);
   };
 

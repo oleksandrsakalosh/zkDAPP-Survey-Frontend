@@ -21,7 +21,6 @@ import { registerSurveyInRegistry } from "@/utils/registry/client";
 import { loadRegisteredSurveyFeed, RegisteredSurveyFeedItem } from "@/utils/registry/feed";
 import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
 import { publishSurveyDraft } from "@/utils/vocdoni/publishSurvey";
-import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
 
 const { width } = Dimensions.get("window");
 
@@ -31,31 +30,93 @@ const formatShortDate = (dateIso: string) =>
         day: "numeric",
     }).format(new Date(dateIso));
 
+// ─── Gaming survey (5 questions, random suffix in name) ───────────────────────
+
 const buildQuickVocdoniTestDraft = (): SurveyDraft => {
     const now = new Date();
     const endDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const surveySuffix = now.toISOString().slice(11, 19).replace(/:/g, "-");
+    // Случайное число от 1000 до 9999 чтобы отличать разные surveys
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
 
     return {
-        name: `Vocdoni Test Survey ${surveySuffix}`,
-        description: "Quick integration test survey created directly from the My Surveys screen.",
+        name: `Gamer Habits & Preferences Survey #${randomSuffix}`,
+        description: "A quick survey about your gaming habits, favourite genres and platforms. Your answers are anonymous and help us understand the modern gaming landscape.",
         startDate: now.toISOString(),
         endDate: endDate.toISOString(),
-        tags: ["vocdoni", "test"],
-        category: "Vocdoni DEV",
+        tags: ["gaming", "games", "survey"],
+        category: "Gaming",
         rewardPerVoter: 1,
         voterCap: 5,
         requirements: [],
         questions: [
             {
-                id: "vocdoni-test-question-1",
+                id: "gq1",
                 order: 1,
                 type: "single_choice",
-                title: "Did this Vocdoni test survey publish successfully?",
+                title: "How many hours per week do you spend playing video games?",
                 isRequired: true,
                 options: [
-                    { id: "yes", label: "Yes", order: 0 },
-                    { id: "no", label: "No", order: 1 },
+                    { id: "gq1-o1", label: "Less than 1 hour", order: 0 },
+                    { id: "gq1-o2", label: "1–5 hours", order: 1 },
+                    { id: "gq1-o3", label: "5–15 hours", order: 2 },
+                    { id: "gq1-o4", label: "15–30 hours", order: 3 },
+                    { id: "gq1-o5", label: "More than 30 hours", order: 4 },
+                ],
+            },
+            {
+                id: "gq2",
+                order: 2,
+                type: "single_choice",
+                title: "Which gaming platform do you use most often?",
+                isRequired: true,
+                options: [
+                    { id: "gq2-o1", label: "PC / Steam", order: 0 },
+                    { id: "gq2-o2", label: "PlayStation", order: 1 },
+                    { id: "gq2-o3", label: "Xbox", order: 2 },
+                    { id: "gq2-o4", label: "Nintendo Switch", order: 3 },
+                    { id: "gq2-o5", label: "Mobile (iOS / Android)", order: 4 },
+                ],
+            },
+            {
+                id: "gq3",
+                order: 3,
+                type: "single_choice",
+                title: "What is your favourite game genre?",
+                isRequired: true,
+                options: [
+                    { id: "gq3-o1", label: "Action / Adventure", order: 0 },
+                    { id: "gq3-o2", label: "RPG (Role-Playing Game)", order: 1 },
+                    { id: "gq3-o3", label: "FPS / Shooter", order: 2 },
+                    { id: "gq3-o4", label: "Strategy / Simulation", order: 3 },
+                    { id: "gq3-o5", label: "Sports / Racing", order: 4 },
+                ],
+            },
+            {
+                id: "gq4",
+                order: 4,
+                type: "single_choice",
+                title: "Do you prefer playing solo or with others online?",
+                isRequired: true,
+                options: [
+                    { id: "gq4-o1", label: "Always solo", order: 0 },
+                    { id: "gq4-o2", label: "Mostly solo, sometimes online", order: 1 },
+                    { id: "gq4-o3", label: "Mix of both equally", order: 2 },
+                    { id: "gq4-o4", label: "Mostly online, sometimes solo", order: 3 },
+                    { id: "gq4-o5", label: "Always online multiplayer", order: 4 },
+                ],
+            },
+            {
+                id: "gq5",
+                order: 5,
+                type: "single_choice",
+                title: "How satisfied are you with the current state of the gaming industry?",
+                isRequired: true,
+                options: [
+                    { id: "gq5-o1", label: "Very satisfied", order: 0 },
+                    { id: "gq5-o2", label: "Somewhat satisfied", order: 1 },
+                    { id: "gq5-o3", label: "Neutral", order: 2 },
+                    { id: "gq5-o4", label: "Somewhat dissatisfied", order: 3 },
+                    { id: "gq5-o5", label: "Very dissatisfied", order: 4 },
                 ],
             },
         ],
@@ -98,12 +159,9 @@ export default function MySurveys() {
     const [registryFeed, setRegistryFeed] = useState<RegisteredSurveyFeedItem[]>([]);
     const [publishedExplorerUrls, setPublishedExplorerUrls] = useState<Record<string, string>>({});
     const [publishedRegistryTxHashes, setPublishedRegistryTxHashes] = useState<Record<string, string>>({});
-    const [submittedVoteIds, setSubmittedVoteIds] = useState<Record<string, string>>({});
-    const [latestPublishedTestSurveyId, setLatestPublishedTestSurveyId] = useState<string | null>(null);
     const [isRegistryLoading, setIsRegistryLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isQuickPublishing, setIsQuickPublishing] = useState(false);
-    const [isQuickVoting, setIsQuickVoting] = useState(false);
 
     useEffect(() => {
         setActiveTab(normalizeTab(params.tab));
@@ -156,10 +214,7 @@ export default function MySurveys() {
         }
 
         return registryFeed
-            .filter(
-                (item) =>
-                    item.detail.hasVoted === true
-            )
+            .filter((item) => item.detail.hasVoted === true)
             .map(mapFeedItemToParticipatedSurvey);
     }, [registryFeed, walletAddress]);
 
@@ -171,13 +226,16 @@ export default function MySurveys() {
         try {
             setIsQuickPublishing(true);
 
+            // 1. Публикуем на Vocdoni
             const publishedElection = await publishSurveyDraft(draft);
             let registryTxHash: string | null = null;
 
+            // 2. Регистрируем в смарт-контракт реестре на Sepolia
+            //    чтобы survey появился во вкладке Explore
             try {
                 const registryRegistration = await registerSurveyInRegistry({
                     electionId: publishedElection.electionId,
-                    category: draft.category || "General",
+                    category: draft.category || "Gaming",
                 });
                 registryTxHash = registryRegistration.txHash;
                 setPublishedRegistryTxHashes((current) => ({
@@ -192,16 +250,15 @@ export default function MySurveys() {
                 ...current,
                 [publishedElection.electionId]: publishedElection.explorerUrl,
             }));
-            setLatestPublishedTestSurveyId(publishedElection.electionId);
+
+            // 3. Перезагружаем список чтобы survey сразу появился в "Created"
             await reloadRegistryFeed();
 
             Alert.alert(
-                registryTxHash ? "Vocdoni test survey created" : "Vocdoni survey created, registry failed",
+                registryTxHash ? "Gaming survey created & registered" : "Vocdoni survey created, registry failed",
                 registryTxHash
-                    ? publishedElection.rotatedWallet
-                        ? `Election ${publishedElection.electionId} was created on Vocdoni DEV, registered on-chain, and added to your list.\n\nRegistry tx: ${registryTxHash}\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
-                        : `Election ${publishedElection.electionId} was created on Vocdoni DEV, registered on-chain, and added to your list.\n\nRegistry tx: ${registryTxHash}`
-                    : `Election ${publishedElection.electionId} was created on Vocdoni DEV, but registry submission failed. The survey will not appear in the public feed until it is registered on-chain.`
+                    ? `"${draft.name}" опубликован на Vocdoni и зарегистрирован в реестре.\n\nОн появится во вкладке Explore — нажми Details чтобы проголосовать.\n\nElection: ${publishedElection.electionId}\nRegistry tx: ${registryTxHash}`
+                    : `"${draft.name}" опубликован на Vocdoni, но регистрация в реестре не удалась — survey не появится во вкладке Explore.\n\nElection: ${publishedElection.electionId}`
             );
         } catch (error) {
             Alert.alert(
@@ -213,64 +270,13 @@ export default function MySurveys() {
         }
     };
 
-    const handleQuickVoteTest = async () => {
-        if (isQuickVoting) return;
-
-        if (!latestPublishedTestSurveyId) {
-            Alert.alert(
-                "No test survey yet",
-                "Create a Vocdoni test survey first, then use the vote button."
-            );
-            return;
-        }
-
-        const targetSurvey = createdSurveys.find((survey) => survey.id === latestPublishedTestSurveyId);
-        if (!targetSurvey) {
-            Alert.alert(
-                "Survey not found",
-                "The latest test survey is no longer in your created registry list. Create a new test survey and try again."
-            );
-            return;
-        }
-
-        try {
-            setIsQuickVoting(true);
-
-            const submittedVote = await voteSurvey(latestPublishedTestSurveyId, [0]);
-
-            setSubmittedVoteIds((current) => ({
-                ...current,
-                [latestPublishedTestSurveyId]: submittedVote.voteId,
-            }));
-
-            await reloadRegistryFeed();
-
-            Alert.alert(
-                submittedVote.alreadyVoted ? "Vote already recorded" : "Test vote submitted",
-                submittedVote.alreadyVoted
-                    ? `This device wallet already voted on election ${latestPublishedTestSurveyId}.\n\nVote ID: ${submittedVote.voteId}`
-                    : `Vote ID: ${submittedVote.voteId}\n\nElection: ${latestPublishedTestSurveyId}`
-            );
-        } catch (error) {
-            Alert.alert(
-                "Vote failed",
-                error instanceof Error ? error.message : "Unable to submit the test vote to Vocdoni."
-            );
-        } finally {
-            setIsQuickVoting(false);
-        }
-    };
-
     const handleManageSurvey = (id: string) => {
         const explorerUrl = publishedExplorerUrls[id];
         const registryTxHash = publishedRegistryTxHashes[id];
-        const voteId = submittedVoteIds[id];
         if (explorerUrl) {
             Alert.alert(
                 "Vocdoni test survey",
-                voteId
-                    ? `Election ${id}\n\nExplorer: ${explorerUrl}${registryTxHash ? `\n\nRegistry tx: ${registryTxHash}` : ""}\n\nLatest vote: ${voteId}`
-                    : `Election ${id}\n\nExplorer: ${explorerUrl}${registryTxHash ? `\n\nRegistry tx: ${registryTxHash}` : ""}`
+                `Election ${id}\n\nExplorer: ${explorerUrl}${registryTxHash ? `\n\nRegistry tx: ${registryTxHash}` : ""}`
             );
             return;
         }
@@ -330,13 +336,10 @@ export default function MySurveys() {
                         onCreateNew={() => { router.push("/create-survey"); }}
                         onQuickPublishTest={handleQuickPublishTest}
                         isQuickPublishing={isQuickPublishing}
-                        onQuickVoteTest={handleQuickVoteTest}
-                        canQuickVoteTest={Boolean(latestPublishedTestSurveyId)}
-                        isQuickVoting={isQuickVoting}
                         isRefreshing={isRefreshing}
                         onRefresh={handleRefresh}
                         onManage={handleManageSurvey}
-                        onEdit={() => {}}
+                        onEdit={() => { }}
                         onResults={(id) => { router.push(`/survey/results/${id}`); }}
                     />
                 ) : (

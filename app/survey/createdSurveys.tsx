@@ -11,9 +11,6 @@ type Props = {
     onCreateNew: () => void;
     onQuickPublishTest: () => void;
     isQuickPublishing?: boolean;
-    onQuickVoteTest: () => void;
-    canQuickVoteTest?: boolean;
-    isQuickVoting?: boolean;
     isRefreshing?: boolean;
     onRefresh?: () => void;
     onManage: (id: string) => void;
@@ -26,9 +23,6 @@ export default function CreatedSurveys({
     onCreateNew,
     onQuickPublishTest,
     isQuickPublishing = false,
-    onQuickVoteTest,
-    canQuickVoteTest = false,
-    isQuickVoting = false,
     isRefreshing = false,
     onRefresh,
     onManage,
@@ -101,13 +95,15 @@ export default function CreatedSurveys({
                     <View style={styles.emptyState}>
                         <Text style={styles.emptyTitle}>No created surveys yet</Text>
                         <Text style={styles.emptyText}>
-                            Create a survey or pull down to refresh your registry-backed list.
+                            Tap "Create Test Survey on Vocdoni" to publish a gaming survey.
+                            It will appear here and in the Explore tab.
                         </Text>
                     </View>
                 }
             />
 
             <View style={styles.stickyWrap}>
+                {/* Кнопка 1: опубликовать gaming survey на Vocdoni + зарегистрировать в реестре */}
                 <Pressable
                     onPress={onQuickPublishTest}
                     disabled={isQuickPublishing}
@@ -129,35 +125,7 @@ export default function CreatedSurveys({
                     </Text>
                 </Pressable>
 
-                <Pressable
-                    onPress={onQuickVoteTest}
-                    disabled={!canQuickVoteTest || isQuickVoting}
-                    android_ripple={{ color: palette.primaryLight }}
-                    style={({ pressed }) => [
-                        styles.secondaryBtn,
-                        pressed && canQuickVoteTest && !isQuickVoting && styles.secondaryBtnPressed,
-                        (!canQuickVoteTest || isQuickVoting) && styles.secondaryBtnDisabled,
-                    ]}
-                >
-                    <MaterialIcons
-                        name="how-to-vote"
-                        size={18}
-                        color={canQuickVoteTest ? palette.primary : palette.textMuted}
-                        style={styles.stickyIcon}
-                    />
-                    <Text
-                        style={[
-                            styles.secondaryText,
-                            !canQuickVoteTest && styles.secondaryTextDisabled,
-                        ]}
-                    >
-                        {isQuickVoting
-                            ? "Submitting Test Vote..."
-                            : canQuickVoteTest
-                                ? "Vote Latest Test Survey"
-                                : "Create Test Survey First"}
-                    </Text>
-                </Pressable>
+                {/* Кнопка 2: открыть Survey Builder */}
                 <Pressable
                     onPress={onCreateNew}
                     android_ripple={{ color: palette.primaryLight }}
@@ -187,7 +155,7 @@ const styles = StyleSheet.create({
     listContent: {
         paddingHorizontal: 16,
         paddingTop: 12,
-        paddingBottom: 226,
+        paddingBottom: 160,
     },
     sectionHeader: {
         marginTop: 6,
@@ -265,15 +233,9 @@ const styles = StyleSheet.create({
     secondaryBtnPressed: {
         backgroundColor: palette.primaryNegative,
     },
-    secondaryBtnDisabled: {
-        opacity: 0.7,
-    },
     secondaryText: {
         color: palette.primaryDark,
         fontSize: 15,
         fontWeight: "700",
-    },
-    secondaryTextDisabled: {
-        color: palette.textMuted,
     },
 });

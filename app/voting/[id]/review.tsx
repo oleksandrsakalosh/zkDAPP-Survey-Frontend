@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,16 +15,18 @@ import Feather from "@expo/vector-icons/Feather";
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
-
-// ─── Component ────────────────────────────────────────────────────────────────
+import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
 
 export default function ReviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state } = useVoting();
   const insets = useSafeAreaInsets();
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const questions = state.survey?.questions ?? [];
   const answers = state.answers;
+  const electionId = state.electionId;
 
   const getAnswerLabel = (questionId: string): string => {
     const question = questions.find((q) => q.id === questionId);
@@ -50,15 +54,76 @@ export default function ReviewScreen() {
       : a.selectedOptions.length > 0;
   }).length;
 
-  const handleSubmit = () => {
-    router.push(`/voting/${id}/success` as any);
+  /**
+   * Преобразует ответы пользователя в массив числовых choices для Vocdoni.
+   * Каждый вопрос — один choice: индекс выбранного варианта (0-based).
+   * Для textarea — всегда 0 (единственный "Submitted response" choice в Vocdoni).
+   */
+  const buildVocdoniChoices = (): number[] => {
+    return questions.map((q) => {
+      const answer = answers.find((a) => a.questionId === q.id);
+
+      if (q.type === "textarea") return 0;
+
+      if (!answer || answer.selectedOptions.length === 0) return 0;
+
+      const firstSelectedId = answer.selectedOptions[0];
+      const optionIndex = (q.options ?? []).findIndex((o) => o.id === firstSelectedId);
+      return optionIndex >= 0 ? optionIndex : 0;
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+
+    if (!electionId) {
+      // Не должно случаться — electionId всегда есть для surveys из реестра
+      console.warn("[review] handleSubmit: no electionId in VotingContext");
+      router.push(`/voting/${id}/success` as any);
+      return;
+    }
+
+    setIsSubmitting(true);
+    const choices = buildVocdoniChoices();
+
+    console.log("[review] submit:start", { electionId, choices });
+
+    try {
+      const result = await voteSurvey(electionId, choices);
+
+      console.log("[review] submit:success", {
+        electionId,
+        voteId: result.voteId,
+        alreadyVoted: result.alreadyVoted,
+      });
+
+      router.push(`/voting/${id}/success` as any);
+    } catch (error) {
+      console.error("[review] submit:error", {
+        electionId,
+        error: error instanceof Error ? error.message : error,
+      });
+
+      Alert.alert(
+        "Vote submission failed",
+        error instanceof Error
+          ? error.message
+          : "Unable to submit your vote to Vocdoni. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => router.back()}
+          disabled={isSubmitting}
+        >
           <Feather name="chevron-left" size={20} color={palette.textSecondary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Review & Submit</Text>
@@ -78,7 +143,7 @@ export default function ReviewScreen() {
           <Text style={styles.summaryTitle}>Ready to Submit?</Text>
           <Text style={styles.summaryText}>
             You've answered {answeredCount} of {questions.length} questions.
-            Your responses will be securely submitted and verified.
+            Your vote will be securely recorded on the Vocdoni blockchain.
           </Text>
         </View>
 
@@ -129,16 +194,27 @@ export default function ReviewScreen() {
 
       {/* ── Action Bar ── */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-          <Text style={styles.submitBtnText}>Confirm & Submit</Text>
-          <Feather name="check" size={16} color={palette.white} />
+        <TouchableOpacity
+          style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
+          onPress={handleSubmit}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <ActivityIndicator size="small" color={palette.white} />
+              <Text style={styles.submitBtnText}>Submitting to Vocdoni…</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.submitBtnText}>Confirm & Submit</Text>
+              <Feather name="check" size={16} color={palette.white} />
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -316,11 +392,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
+  submitBtnDisabled: {
+    opacity: 0.7,
+  },
   submitBtnText: {
     color: palette.white,
     fontSize: 15,
     fontWeight: "700",
   },
 });
-
-
