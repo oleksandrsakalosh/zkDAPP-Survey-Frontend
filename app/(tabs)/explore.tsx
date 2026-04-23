@@ -19,6 +19,8 @@ import { SurveyCardData, SortKey } from "@/domain/models";
 import { palette } from "@/theme/palette";
 import { isRegistryConfigured } from "@/utils/registry/client";
 import { loadRegisteredSurveyFeed } from "@/utils/registry/feed";
+import { useEligibilityProfile } from "../hooks/useEligibilityProfile";
+import { checkEligibility } from "@/utils/checkEligibility";
 
 const SORT_LABELS: Record<SortKey, string> = {
     rewardDesc: "Reward ↓",
@@ -79,15 +81,25 @@ export default function Explore() {
             }
         }
     };
+    const { profile } = useEligibilityProfile();
 
     useEffect(() => {
         hydrateFeed();
     }, []);
 
+    const surveysWithEligibility = useMemo(
+        () =>
+            surveys.map((survey) => ({
+                ...survey,
+                eligibility: checkEligibility(survey.requirements ?? [], profile),
+            })),
+        [profile, surveys]
+    );
+
     const filteredSurveys = useMemo(() => {
         const loweredQuery = query.trim().toLowerCase();
 
-        let result = surveys.filter((survey) =>
+        let result = surveysWithEligibility.filter((survey) =>
             survey.title.toLowerCase().includes(loweredQuery)
         );
 
@@ -139,7 +151,7 @@ export default function Explore() {
     }, [
         query,
         sortBy,
-        surveys,
+        surveysWithEligibility,
         appliedCategories,
         appliedMinReward,
         appliedOpenOnly,

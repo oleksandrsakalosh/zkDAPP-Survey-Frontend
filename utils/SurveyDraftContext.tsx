@@ -12,6 +12,7 @@ const defaultDraft: SurveyDraft = {
   requirements: [],
   rewardPerVoter: null,
   voterCap: null,
+  anonymity: false
 };
 
 type Ctx = {

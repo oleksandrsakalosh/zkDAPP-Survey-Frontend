@@ -81,9 +81,9 @@ To test credential sharing with Valera wallet, you'll need both apps running on 
 npm run proof:service
 ```
 
-- use emulator for easiest localhost routing
-- place your `.ptau` file under `zk/ptau/` before running proof generation
-- full native in-app proof generator module is in future-future work and not implemented yet.
+> **Note:** Right now the app uses backend to generate/verify proofs. Ideally this should be moved to the client side completely, but the possibility of it is questioned. Reason: this would drain the device resources and UX would be cooked.
+
+
 
 ## Useful Scripts
 

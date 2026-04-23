@@ -2,12 +2,10 @@ import * as React from "react";
 import { useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
-  NativeSyntheticEvent,
   Platform,
   Pressable,
   ScrollView,
   Text,
-  TextInputContentSizeChangeEventData,
   TextInput,
   View,
 } from "react-native";
@@ -23,16 +21,21 @@ import { palette } from "@/theme/palette";
 
 const TAGS = ["Politics", "Finance", "Health", "Education", "Community", "Technology"];
 
-function formatDate(d?: Date | null) {
-  if (!d) return "";
-  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
-}
+const formatDate = (d: Date) =>
+  d.toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+  });
 
 export default function CreateSurvey() {
   const { draft, setDraft } = useSurveyDraft();
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerMode, setPickerMode] = useState<"start" | "end">("start");
+  const [androidPickerStep, setAndroidPickerStep] = useState<"date" | "time">("date");
   const [tempDate, setTempDate] = useState<Date>(new Date());
   const [descriptionHeight, setDescriptionHeight] = useState(120);
 
@@ -98,7 +101,8 @@ export default function CreateSurvey() {
   const openPicker = (mode: "start" | "end") => {
     setPickerMode(mode);
     const current = mode === "start" ? startDate : endDate;
-    setTempDate(current ?? new Date()); // for Android value
+    setTempDate(current ?? new Date());
+    setAndroidPickerStep("date");
     setPickerOpen(true);
   };
 
@@ -118,20 +122,38 @@ export default function CreateSurvey() {
   const onChangeAndroid = (event: DateTimePickerEvent, selectedDate?: Date) => {
     if (event.type === "dismissed") {
       setPickerOpen(false);
+      setAndroidPickerStep("date");
       return;
     }
 
     const chosen = selectedDate ?? tempDate;
 
+    if (androidPickerStep === "date") {
+      const nextDate = new Date(tempDate);
+      nextDate.setFullYear(chosen.getFullYear(), chosen.getMonth(), chosen.getDate());
+      setTempDate(nextDate);
+      setAndroidPickerStep("time");
+      return;
+    }
+
+    const finalDate = new Date(tempDate);
+    finalDate.setHours(
+      chosen.getHours(),
+      chosen.getMinutes(),
+      chosen.getSeconds(),
+      chosen.getMilliseconds()
+    );
+
     if (pickerMode === "start") {
-      setStart(chosen);
-      if (endDate && endDate < chosen) setEnd(chosen);
+      setStart(finalDate);
+      if (endDate && endDate < finalDate) setEnd(finalDate);
     } else {
-      if (startDate && chosen < startDate) setEnd(startDate);
-      else setEnd(chosen);
+      if (startDate && finalDate < startDate) setEnd(startDate);
+      else setEnd(finalDate);
     }
 
     setPickerOpen(false);
+    setAndroidPickerStep("date");
   };
 
   return (
@@ -207,10 +229,12 @@ export default function CreateSurvey() {
               }}
               style={[styles.dateBox, durationError && styles.inputError]}
             >
-              <Text style={startDate ? styles.dateValue : styles.datePlaceholder}>
+              <Text style={[styles.dateText, startDate ? styles.dateValue : styles.datePlaceholder]}>
                 {startDate ? formatDate(startDate) : "Start"}
               </Text>
-              <Ionicons name="calendar-outline" size={18} color="#111827" />
+              <View style={styles.dateIconWrap}>
+                <Ionicons name="calendar-outline" size={18} color="#111827" />
+              </View>
             </Pressable>
 
             <Pressable
@@ -220,10 +244,12 @@ export default function CreateSurvey() {
               }}
               style={[styles.dateBox, durationError && styles.inputError]}
             >
-              <Text style={endDate ? styles.dateValue : styles.datePlaceholder}>
+              <Text style={[styles.dateText, endDate ? styles.dateValue : styles.datePlaceholder]}>
                 {endDate ? formatDate(endDate) : "End"}
               </Text>
-              <Ionicons name="calendar-outline" size={18} color="#111827" />
+              <View style={styles.dateIconWrap}>
+                <Ionicons name="calendar-outline" size={18} color="#111827" />
+              </View>
             </Pressable>
           </View>
 
@@ -232,11 +258,16 @@ export default function CreateSurvey() {
           {/* ANDROID picker */}
           {Platform.OS === "android" && pickerOpen && (
             <DateTimePicker
+              key={`${pickerMode}-${androidPickerStep}`}
               value={tempDate}
-              mode="date"
-              display="calendar"
+              mode={androidPickerStep}
+              display="default"
               onChange={onChangeAndroid}
-              minimumDate={pickerMode === "end" && startDate ? startDate : undefined}
+              minimumDate={
+                androidPickerStep === "date" && pickerMode === "end" && startDate
+                  ? startDate
+                  : undefined
+              }
             />
           )}
 
@@ -244,7 +275,7 @@ export default function CreateSurvey() {
           {Platform.OS === "ios" && (
             <DateTimePickerModal
               isVisible={pickerOpen}
-              mode="date"
+              mode="datetime"
               date={
                 pickerMode === "start"
                   ? startDate ?? new Date()
@@ -382,8 +413,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     backgroundColor: palette.white,
+  },
+  dateText: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  dateIconWrap: {
+    width: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
   },
   datePlaceholder: { fontSize: 16, color: "#9CA3AF" },
 

@@ -15,7 +15,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import CompletedSurveyCard from "@/components/completedSurveyCard";
 import SurveyCard from "@/components/surveyCard";
 import type { ParticipatedSurveySummary, SurveyCardData, SurveySummary } from "@/domain/models";
+import { useEligibilityProfile } from "@/app/hooks/useEligibilityProfile";
 import { palette } from "@/theme/palette";
+import { checkEligibility } from "@/utils/checkEligibility";
 import { RegisteredSurveyFeedItem, loadRegisteredSurveyFeed } from "@/utils/registry/feed";
 import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
 
@@ -76,6 +78,7 @@ const mapFeedItemToParticipated = (item: RegisteredSurveyFeedItem): Participated
 export default function Home() {
     const router = useRouter();
     const { walletAddress, isLoading: isWalletLoading } = useDeviceWallet();
+    const { profile } = useEligibilityProfile();
 
     const [feedItems, setFeedItems] = useState<RegisteredSurveyFeedItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -139,10 +142,14 @@ export default function Home() {
                             item.detail.timeInfo?.isOpen !== false &&
                             item.detail.hasVoted !== true
                     )
+                    .map((item) => ({
+                        ...item.card,
+                        eligibility: checkEligibility(item.card.requirements ?? [], profile),
+                    }))
+                    .filter((survey) => survey.eligibility?.decision === "qualify")
                     .slice(0, 1)
-                    .map((item) => item.card)
                 : [],
-        [feedItems, walletAddress]
+        [feedItems, profile, walletAddress]
     );
 
     const activeSurvey = useMemo<SurveySummary | undefined>(

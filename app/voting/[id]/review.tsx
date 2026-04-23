@@ -33,9 +33,6 @@ export default function ReviewScreen() {
     const answer = answers.find((a) => a.questionId === questionId);
     if (!question || !answer) return "—";
 
-    if (question.type === "textarea") {
-      return answer.textValue.trim() || "—";
-    }
 
     if (answer.selectedOptions.length === 0) return "—";
 
@@ -49,9 +46,7 @@ export default function ReviewScreen() {
   const answeredCount = answers.filter((a) => {
     const q = questions.find((q) => q.id === a.questionId);
     if (!q) return false;
-    return q.type === "textarea"
-      ? a.textValue.trim().length > 0
-      : a.selectedOptions.length > 0;
+    return a.selectedOptions.length > 0;
   }).length;
 
   /**
@@ -153,10 +148,7 @@ export default function ReviewScreen() {
           <View style={styles.qGrid}>
             {questions.map((q, i) => {
               const ans = answers.find((a) => a.questionId === q.id);
-              const isAnswered =
-                q.type === "textarea"
-                  ? (ans?.textValue ?? "").trim().length > 0
-                  : (ans?.selectedOptions ?? []).length > 0;
+              const isAnswered = (ans?.selectedOptions ?? []).length > 0;
               return (
                 <View
                   key={q.id}

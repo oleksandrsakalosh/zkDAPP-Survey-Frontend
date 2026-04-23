@@ -17,7 +17,7 @@ import { SurveyQuestion, QuestionType, SurveyQuestionOption } from "@/domain/mod
 import { palette } from "@/theme/palette";
 import { useSurveyDraft } from "@/utils/SurveyDraftContext";
 
-const TYPES: QuestionType[] = ["multiple_choice", "single_choice", "textarea"];
+const TYPES: QuestionType[] = ["multiple_choice", "single_choice"];
 
 const makeId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
@@ -54,7 +54,7 @@ export default function QuestionsStep() {
             ? draft.questions
             : [
                 makeQuestion(),
-                makeQuestion({ type: "textarea", isRequired: false, options: [] }),
+                makeQuestion({ isRequired: false, options: [] }),
             ]
     );
 
@@ -90,9 +90,6 @@ export default function QuestionsStep() {
             prev.map((q) => {
                 if (q.id !== id) return q;
 
-                if (type === "textarea") {
-                    return { ...q, type, options: [] };
-                }
 
                 return {
                     ...q,
@@ -364,14 +361,6 @@ export default function QuestionsStep() {
                                                 <Text style={styles.addOptionPlus}>+</Text>
                                                 <Text style={styles.addOptionText}>Add option</Text>
                                             </Pressable>
-                                        </View>
-                                    )}
-
-                                    {q.type === "textarea" && (
-                                        <View style={[styles.paragraphBox, { marginTop: 14 }]}>
-                                            <Text style={styles.paragraphPlaceholder}>
-                                                Answer text (long) — no predefined options
-                                            </Text>
                                         </View>
                                     )}
 

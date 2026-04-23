@@ -16,6 +16,7 @@ import SdJwtParser from "@/components/SdJwtParser";
 import ProofGenerator from "@/components/ProofGenerator";
 import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
 import { formatWalletAddress } from "@/utils/vocdoni/wallet";
+import { router } from "expo-router";
 
 export default function Profile() {
     const [newSurveysEnabled, setNewSurveysEnabled] = useState(true);
@@ -33,131 +34,132 @@ export default function Profile() {
             : walletAddress ?? "Wallet unavailable";
 
     return (
-            <ScrollView
-                style={styles.screen}
-                contentContainerStyle={styles.content}
-                showsVerticalScrollIndicator={false}
-                contentInsetAdjustmentBehavior="never"
+        <ScrollView
+            style={styles.screen}
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+            contentInsetAdjustmentBehavior="never"
+        >
+            <View style={styles.profileCard}>
+                <Text style={styles.profileName}>Tralalela Tralala</Text>
+                <View style={styles.walletRow}>
+                    <Text style={styles.walletText}>
+                        {isLoading ? "Preparing wallet..." : walletDisplay}
+                    </Text>
+                    <MaterialIcons name="content-copy" size={14} color={palette.white50} />
+                </View>
+
+                <View style={styles.badgesRow}>
+                    <View style={styles.badgePrimary}>
+                        <Text style={styles.badgePrimaryText}>Voter</Text>
+                    </View>
+                    <View style={styles.badgeSecondary}>
+                        <Text style={styles.badgeSecondaryText}>Survey Creator</Text>
+                    </View>
+                </View>
+            </View>
+
+            <Text style={styles.sectionLabel}>Account</Text>
+            <View style={styles.card}>
+                <SettingRow
+                    title="Edit Nickname"
+                    subtitle="Set a display name"
+                    withBorder
+                />
+                <SettingRow
+                    title="Voter Eligibility Profile"
+                    subtitle="Age, location, demographics"
+                    withBorder
+                    onPress={() => router.navigate("/voter-eligibility-profile")}
+                />
+                <SettingRow
+                    title="Connected Wallet"
+                    subtitle={walletSubtitle}
+                />
+            </View>
+
+            <Text style={styles.sectionLabel}>Notifications</Text>
+            <View style={styles.card}>
+                <ToggleRow
+                    title="New Surveys for Me"
+                    subtitle="When matching surveys appear"
+                    value={newSurveysEnabled}
+                    onValueChange={setNewSurveysEnabled}
+                    withBorder
+                />
+                <ToggleRow
+                    title="Reward Updates"
+                    subtitle="Payouts and confirmations"
+                    value={rewardUpdatesEnabled}
+                    onValueChange={setRewardUpdatesEnabled}
+                    withBorder
+                />
+                <ToggleRow
+                    title="My Survey Activity"
+                    subtitle="New responses, milestones"
+                    value={activityEnabled}
+                    onValueChange={setActivityEnabled}
+                />
+            </View>
+
+            <Text style={styles.sectionLabel}>Support</Text>
+            <View style={styles.card}>
+                <SettingRow title="Help Center" withBorder />
+                <SettingRow title="Rate the App" />
+            </View>
+
+            <Text style={styles.sectionLabel}>Test Tools</Text>
+            <View style={styles.card}>
+                <Pressable
+                    style={[styles.row, styles.testToolRow, styles.rowBorder]}
+                    onPress={() => setShowRequestBuilder(true)}
+                >
+                    <Text style={styles.testToolText}>Open Request Builder</Text>
+                    <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
+                </Pressable>
+                <Pressable
+                    style={[styles.row, styles.testToolRow, styles.rowBorder]}
+                    onPress={() => setShowSdJwtParser(true)}
+                >
+                    <Text style={styles.testToolText}>SD-JWT Parser</Text>
+                    <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
+                </Pressable>
+                <Pressable
+                    style={[styles.row, styles.testToolRow]}
+                    onPress={() => setShowProofGenerator(true)}
+                >
+                    <Text style={styles.testToolText}>Proof Generator</Text>
+                    <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
+                </Pressable>
+            </View>
+
+            <Modal
+                visible={showRequestBuilder}
+                animationType="slide"
+                presentationStyle="formSheet"
+                onRequestClose={() => setShowRequestBuilder(false)}
             >
-                <View style={styles.profileCard}>
-                    <Text style={styles.profileName}>Tralalela Tralala</Text>
-                    <View style={styles.walletRow}>
-                        <Text style={styles.walletText}>
-                            {isLoading ? "Preparing wallet..." : walletDisplay}
-                        </Text>
-                        <MaterialIcons name="content-copy" size={14} color={palette.white50} />
-                    </View>
+                <RequestBuilder onClose={() => setShowRequestBuilder(false)} />
+            </Modal>
 
-                    <View style={styles.badgesRow}>
-                        <View style={styles.badgePrimary}>
-                            <Text style={styles.badgePrimaryText}>Voter</Text>
-                        </View>
-                        <View style={styles.badgeSecondary}>
-                            <Text style={styles.badgeSecondaryText}>Survey Creator</Text>
-                        </View>
-                    </View>
-                </View>
+            <Modal
+                visible={showSdJwtParser}
+                animationType="slide"
+                presentationStyle="formSheet"
+                onRequestClose={() => setShowSdJwtParser(false)}
+            >
+                <SdJwtParser onClose={() => setShowSdJwtParser(false)} />
+            </Modal>
 
-                <Text style={styles.sectionLabel}>Account</Text>
-                <View style={styles.card}>
-                    <SettingRow
-                        title="Edit Nickname"
-                        subtitle="Set a display name"
-                        withBorder
-                    />
-                    <SettingRow
-                        title="Voter Eligibility Profile"
-                        subtitle="Age, location, demographics"
-                        withBorder
-                    />
-                    <SettingRow
-                        title="Connected Wallet"
-                        subtitle={walletSubtitle}
-                    />
-                </View>
-
-                <Text style={styles.sectionLabel}>Notifications</Text>
-                <View style={styles.card}>
-                    <ToggleRow
-                        title="New Surveys for Me"
-                        subtitle="When matching surveys appear"
-                        value={newSurveysEnabled}
-                        onValueChange={setNewSurveysEnabled}
-                        withBorder
-                    />
-                    <ToggleRow
-                        title="Reward Updates"
-                        subtitle="Payouts and confirmations"
-                        value={rewardUpdatesEnabled}
-                        onValueChange={setRewardUpdatesEnabled}
-                        withBorder
-                    />
-                    <ToggleRow
-                        title="My Survey Activity"
-                        subtitle="New responses, milestones"
-                        value={activityEnabled}
-                        onValueChange={setActivityEnabled}
-                    />
-                </View>
-
-                <Text style={styles.sectionLabel}>Support</Text>
-                <View style={styles.card}>
-                    <SettingRow title="Help Center" withBorder />
-                    <SettingRow title="Rate the App" />
-                </View>
-
-                <Text style={styles.sectionLabel}>Test Tools</Text>
-                <View style={styles.card}>
-                    <Pressable
-                        style={[styles.row, styles.testToolRow, styles.rowBorder]}
-                        onPress={() => setShowRequestBuilder(true)}
-                    >
-                        <Text style={styles.testToolText}>Open Request Builder</Text>
-                        <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
-                    </Pressable>
-                    <Pressable
-                        style={[styles.row, styles.testToolRow, styles.rowBorder]}
-                        onPress={() => setShowSdJwtParser(true)}
-                    >
-                        <Text style={styles.testToolText}>SD-JWT Parser</Text>
-                        <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
-                    </Pressable>
-                    <Pressable
-                        style={[styles.row, styles.testToolRow]}
-                        onPress={() => setShowProofGenerator(true)}
-                    >
-                        <Text style={styles.testToolText}>Proof Generator</Text>
-                        <MaterialIcons name="chevron-right" size={20} color={palette.textMuted} />
-                    </Pressable>
-                </View>
-
-                <Modal
-                    visible={showRequestBuilder}
-                    animationType="slide"
-                    presentationStyle="formSheet"
-                    onRequestClose={() => setShowRequestBuilder(false)}
-                >
-                    <RequestBuilder onClose={() => setShowRequestBuilder(false)} />
-                </Modal>
-
-                <Modal
-                    visible={showSdJwtParser}
-                    animationType="slide"
-                    presentationStyle="formSheet"
-                    onRequestClose={() => setShowSdJwtParser(false)}
-                >
-                    <SdJwtParser onClose={() => setShowSdJwtParser(false)} />
-                </Modal>
-
-                <Modal
-                    visible={showProofGenerator}
-                    animationType="slide"
-                    presentationStyle="formSheet"
-                    onRequestClose={() => setShowProofGenerator(false)}
-                >
-                    <ProofGenerator onClose={() => setShowProofGenerator(false)} />
-                </Modal>
-            </ScrollView>
+            <Modal
+                visible={showProofGenerator}
+                animationType="slide"
+                presentationStyle="formSheet"
+                onRequestClose={() => setShowProofGenerator(false)}
+            >
+                <ProofGenerator onClose={() => setShowProofGenerator(false)} />
+            </Modal>
+        </ScrollView>
     );
 }
 
@@ -165,13 +167,15 @@ function SettingRow({
     title,
     subtitle,
     withBorder = false,
+    onPress,
 }: {
     title: string;
     subtitle?: string;
     withBorder?: boolean;
+    onPress?: () => void;
 }) {
     return (
-        <Pressable style={[styles.row, withBorder && styles.rowBorder]}>
+        <Pressable style={[styles.row, withBorder && styles.rowBorder]} onPress={onPress}>
             <View style={styles.rowTextWrap}>
                 <Text style={styles.rowTitle}>{title}</Text>
                 {subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}

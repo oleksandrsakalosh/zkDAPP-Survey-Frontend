@@ -52,6 +52,7 @@ export default function RootLayout() {
         <Stack.Screen name="create-survey" options={{ headerShown: false }}/>
         <Stack.Screen name="survey/manage/[id]" options={{ headerShown: false }}/>
         <Stack.Screen name="survey/manage/[id]/responses" options={{ headerShown: false }}/>
+        <Stack.Screen name="voter-eligibility-profile" options={{ headerShown: false }}/>
       </Stack>
     </WalletProvider>
   );

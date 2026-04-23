@@ -4,7 +4,7 @@ export type CurrencyCode = "USD" | "USDC" | "EUR" | "TOKEN" | string;
 
 export type SurveyStatus = "active" | "draft" | "results";
 export type RequirementType = "Age" | "Location" | "Education level" | "";
-export type QuestionType = "single_choice" | "multiple_choice" | "textarea";
+export type QuestionType = "single_choice" | "multiple_choice";
 export type SortKey = "rewardDesc" | "rewardAsc" | "nameAsc";
 export type SurveyListVariant =
   | "explore"
@@ -152,6 +152,7 @@ export interface SurveyDraft {
   requirements: SurveyRequirement[];
   rewardPerVoter: number | null;
   voterCap: number | null;
+  anonymity: boolean | null;
 }
 
 export interface CreatedSurveyCardData {
