@@ -3,6 +3,10 @@ import {
     SDJWT_AGE_16,
     SDJWT_AGE_20,
     SDJWT_AGE_40,
+    SDJWT_AGE_16_NAMESURNAME,
+    SDJWT_AGE_20_NAMESURNAME,
+    SDJWT_AGE_40_NAMESURNAME,
+    SDJWT_AGE_21_COUNTRY_UA
 } from "@/utils/sdjwt/mocks/sdJwtMockAge";
 
 export interface SdJwtMockToken {
@@ -32,4 +36,24 @@ export const SD_JWT_MOCK_TOKENS: SdJwtMockToken[] = [
         label: "SDJWT_AGE_40",
         token: SDJWT_AGE_40,
     },
+    {
+        id: "age-16-namesurname",
+        label: "SDJWT_AGE_16_NAMESURNAME",
+        token: SDJWT_AGE_16_NAMESURNAME,
+    },
+    {
+        id: "age-20-namesurname",
+        label: "SDJWT_AGE_20_NAMESURNAME",
+        token: SDJWT_AGE_20_NAMESURNAME,
+    },
+    {
+        id: "age-40-namesurname",
+        label: "SDJWT_AGE_40_NAMESURNAME",
+        token: SDJWT_AGE_40_NAMESURNAME,
+    },
+    {
+        id: "age-21-country-ua",
+        label: "SDJWT_AGE_21_COUNTRY_UA",
+        token: SDJWT_AGE_21_COUNTRY_UA,
+    }
 ];
