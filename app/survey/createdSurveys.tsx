@@ -11,9 +11,6 @@ type Props = {
     onCreateNew: () => void;
     onQuickPublishTest: () => void;
     isQuickPublishing?: boolean;
-    onQuickVoteTest: () => void;
-    canQuickVoteTest?: boolean;
-    isQuickVoting?: boolean;
     isRefreshing?: boolean;
     onRefresh?: () => void;
     onManage: (id: string) => void;
@@ -26,9 +23,6 @@ export default function CreatedSurveys({
     onCreateNew,
     onQuickPublishTest,
     isQuickPublishing = false,
-    onQuickVoteTest,
-    canQuickVoteTest = false,
-    isQuickVoting = false,
     isRefreshing = false,
     onRefresh,
     onManage,
@@ -126,36 +120,6 @@ export default function CreatedSurveys({
                     />
                     <Text style={styles.stickyText}>
                         {isQuickPublishing ? "Publishing to Vocdoni..." : "Create Test Survey on Vocdoni"}
-                    </Text>
-                </Pressable>
-
-                <Pressable
-                    onPress={onQuickVoteTest}
-                    disabled={!canQuickVoteTest || isQuickVoting}
-                    android_ripple={{ color: palette.primaryLight }}
-                    style={({ pressed }) => [
-                        styles.secondaryBtn,
-                        pressed && canQuickVoteTest && !isQuickVoting && styles.secondaryBtnPressed,
-                        (!canQuickVoteTest || isQuickVoting) && styles.secondaryBtnDisabled,
-                    ]}
-                >
-                    <MaterialIcons
-                        name="how-to-vote"
-                        size={18}
-                        color={canQuickVoteTest ? palette.primary : palette.textMuted}
-                        style={styles.stickyIcon}
-                    />
-                    <Text
-                        style={[
-                            styles.secondaryText,
-                            !canQuickVoteTest && styles.secondaryTextDisabled,
-                        ]}
-                    >
-                        {isQuickVoting
-                            ? "Submitting Test Vote..."
-                            : canQuickVoteTest
-                                ? "Vote Latest Test Survey"
-                                : "Create Test Survey First"}
                     </Text>
                 </Pressable>
                 <Pressable

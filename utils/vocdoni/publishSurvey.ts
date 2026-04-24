@@ -52,11 +52,6 @@ const buildSurveyCardMeta = (draft: SurveyDraft, censusSize: number) => ({
       type: requirement.type,
       value: requirement.value,
     })),
-    questions: draft.questions.map((q) => ({
-      id: q.id,
-      type: q.type,
-      isRequired: q.isRequired ?? false,
-    })),
     anonimity: draft.anonymity
   },
 });
@@ -198,6 +193,7 @@ export const publishSurveyDraft = async (draft: SurveyDraft) => {
     });
 
     let electionStatus = 'unknown';
+    const apiBase = client.url.replace(/\/+$/, '');
 
     for (let attempt = 1; attempt <= 24; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -206,29 +202,31 @@ export const publishSurveyDraft = async (draft: SurveyDraft) => {
         attempt,
       });
 
-      let publishedElection;
       try {
-        publishedElection = await client.fetchElection(electionId);
+        const res = await fetch(`${apiBase}/elections/${electionId}`);
+        if (!res.ok) {
+          console.warn('[publishSurvey] electionStatus:fetch:httpError', { attempt, status: res.status });
+          continue;
+        }
+        const data = await res.json();
+        electionStatus = String(data.status ?? 'unknown').toUpperCase();
+
+        console.log('[publishSurvey] electionStatus', {
+          electionId,
+          attempt,
+          status: electionStatus,
+          elapsedMs: Date.now() - electionStartedAt,
+        });
+
+        if (electionStatus === ElectionStatus.ONGOING || electionStatus === 'READY') {
+          break;
+        }
       } catch (fetchError) {
-        console.error('[publishSurvey] electionStatus:fetch:error', {
+        console.warn('[publishSurvey] electionStatus:fetch:error', {
           electionId,
           attempt,
           error: describeError(fetchError),
         });
-        throw fetchError;
-      }
-
-      electionStatus = publishedElection.status;
-
-      console.log('[publishSurvey] electionStatus', {
-        electionId,
-        attempt,
-        status: electionStatus,
-        elapsedMs: Date.now() - electionStartedAt,
-      });
-
-      if (publishedElection.status === ElectionStatus.ONGOING) {
-        break;
       }
     }
 

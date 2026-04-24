@@ -164,17 +164,14 @@ const getSurveyCardMeta = (electionValue?: Record<string, unknown>): SurveyCardM
     return {};
   }
 
-  const getter = electionValue.get;
-  if (typeof getter === "function") {
-    const viaGetter = getter.call(electionValue, "meta.surveyCard");
-    if (viaGetter && typeof viaGetter === "object") {
-      return viaGetter as SurveyCardMeta;
-    }
-  }
-
   const nestedMeta = getValueByPath(electionValue, "meta.surveyCard");
   if (nestedMeta && typeof nestedMeta === "object") {
     return nestedMeta as SurveyCardMeta;
+  }
+
+  const metaMeta = getValueByPath(electionValue, "metadata.meta.surveyCard");
+  if (metaMeta && typeof metaMeta === "object") {
+    return metaMeta as SurveyCardMeta;
   }
 
   const directMeta = asRecord(electionValue.meta);
@@ -537,10 +534,20 @@ const mapElectionToFeedItem = (
 
 const fetchHydratedElection = async (client: any, electionId: string): Promise<RegistryHydratedElection> => {
   client.setElectionId(electionId);
-  const [election, voteId] = await Promise.all([
-    client.fetchElection(electionId),
-    client.hasAlreadyVoted(),
-  ]);
+
+  const apiBase = client.url.replace(/\/+$/, '');
+  const res = await fetch(`${apiBase}/elections/${electionId}`);
+  if (!res.ok) {
+    throw new Error(`Vocdoni API returned ${res.status} for election ${electionId}`);
+  }
+  const election = await res.json();
+
+  let voteId: string | null = null;
+  try {
+    voteId = await client.hasAlreadyVoted();
+  } catch {
+    voteId = null;
+  }
 
   return {
     election,

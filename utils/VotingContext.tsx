@@ -11,16 +11,18 @@ export interface VotingAnswer {
 interface VotingState {
   survey: SurveyDetail | null;
   answers: VotingAnswer[];
+  electionId: string | null;
 }
 
 type VotingCtx = {
   state: VotingState;
   setSurvey: (survey: SurveyDetail) => void;
   setAnswer: (answer: VotingAnswer) => void;
+  setElectionId: (electionId: string) => void;
   reset: () => void;
 };
 
-const defaultState: VotingState = { survey: null, answers: [] };
+const defaultState: VotingState = { survey: null, answers: [], electionId: null };
 
 const VotingContext = createContext<VotingCtx | null>(null);
 
@@ -28,7 +30,8 @@ export function VotingProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<VotingState>(defaultState);
 
   const setSurvey = useCallback((survey: SurveyDetail) => {
-    setState({
+    setState((prev) => ({
+      ...prev,
       survey,
       answers: (survey.questions ?? []).map((q) => ({
         questionId: q.id,
@@ -36,7 +39,7 @@ export function VotingProvider({ children }: { children: React.ReactNode }) {
         selectedOptions: [],
         textValue: "",
       })),
-    });
+    }));
   }, []);
 
   const setAnswer = useCallback((answer: VotingAnswer) => {
@@ -48,11 +51,15 @@ export function VotingProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  const setElectionId = useCallback((electionId: string) => {
+    setState((prev) => ({ ...prev, electionId }));
+  }, []);
+
   const reset = useCallback(() => setState(defaultState), []);
 
   const value = useMemo(
-    () => ({ state, setSurvey, setAnswer, reset }),
-    [state, setSurvey, setAnswer, reset]
+    () => ({ state, setSurvey, setAnswer, setElectionId, reset }),
+    [state, setSurvey, setAnswer, setElectionId, reset]
   );
 
   return (

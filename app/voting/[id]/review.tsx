@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import Feather from "@expo/vector-icons/Feather";
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
+import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -21,8 +24,11 @@ export default function ReviewScreen() {
   const { state } = useVoting();
   const insets = useSafeAreaInsets();
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const questions = state.survey?.questions ?? [];
   const answers = state.answers;
+  const electionId = state.electionId;
 
   const getAnswerLabel = (questionId: string): string => {
     const question = questions.find((q) => q.id === questionId);
@@ -45,15 +51,47 @@ export default function ReviewScreen() {
     return a.selectedOptions.length > 0;
   }).length;
 
-  const handleSubmit = () => {
-    router.push(`/voting/${id}/success` as any);
+  const buildVocdoniChoices = (): number[] => {
+    return questions.map((q) => {
+      const answer = answers.find((a) => a.questionId === q.id);
+      if (!answer || answer.selectedOptions.length === 0) return 0;
+      const idx = (q.options ?? []).findIndex((o) => o.id === answer.selectedOptions[0]);
+      return idx >= 0 ? idx : 0;
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (isSubmitting) return;
+
+    if (!electionId) {
+      router.push(`/voting/${id}/success` as any);
+      return;
+    }
+
+    setIsSubmitting(true);
+    const choices = buildVocdoniChoices();
+    console.log("[review] submit:start", { electionId, choices });
+
+    try {
+      const result = await voteSurvey(electionId, choices);
+      console.log("[review] submit:success", { electionId, voteId: result.voteId });
+      router.push(`/voting/${id}/success` as any);
+    } catch (error) {
+      console.error("[review] submit:error", { electionId, error: error instanceof Error ? error.message : error });
+      Alert.alert(
+        "Vote submission failed",
+        error instanceof Error ? error.message : "Unable to submit your vote to Vocdoni. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
       {/* ── Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()} disabled={isSubmitting}>
           <Feather name="chevron-left" size={20} color={palette.textSecondary} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Review & Submit</Text>
@@ -121,9 +159,22 @@ export default function ReviewScreen() {
 
       {/* ── Action Bar ── */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-          <Text style={styles.submitBtnText}>Confirm & Submit</Text>
-          <Feather name="check" size={16} color={palette.white} />
+        <TouchableOpacity
+          style={[styles.submitBtn, isSubmitting && { opacity: 0.7 }]}
+          onPress={handleSubmit}
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <>
+              <ActivityIndicator size="small" color={palette.white} />
+              <Text style={styles.submitBtnText}>Submitting to Vocdoni...</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.submitBtnText}>Confirm & Submit</Text>
+              <Feather name="check" size={16} color={palette.white} />
+            </>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
