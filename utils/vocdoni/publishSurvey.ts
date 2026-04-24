@@ -10,7 +10,6 @@ const DEFAULT_DYNAMIC_CENSUS_SIZE = 25;
 const MAX_DYNAMIC_CENSUS_SIZE = 500;
 
 const sanitizeQuestionChoices = (question: SurveyQuestion) => {
-
   return (question.options ?? []).map((option, index) => ({
     title: option.label.trim(),
     value: index,
@@ -52,18 +51,8 @@ const buildSurveyCardMeta = (draft: SurveyDraft, censusSize: number) => ({
       type: requirement.type,
       value: requirement.value,
     })),
-    anonimity: draft.anonymity
   },
 });
-
-const resolveMaxCount = (draft: SurveyDraft) => {
-  return draft.questions.reduce((max, q) => {
-    if (q.type === 'multiple_choice') {
-      return Math.max(max, q.options?.length ?? 1);
-    }
-    return Math.max(max, 1);
-  }, 1);
-};
 
 const resolveElectionEndDate = (draft: SurveyDraft) => {
   if (draft.endDate) {
@@ -155,9 +144,6 @@ export const publishSurveyDraft = async (draft: SurveyDraft) => {
       census,
       electionType: {
         dynamicCensus: true,
-      },
-      voteType: {
-        maxCount: resolveMaxCount(draft),
       },
     });
 
