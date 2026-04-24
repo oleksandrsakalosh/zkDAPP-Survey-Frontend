@@ -3,7 +3,7 @@ pragma circom 2.1.6;
 include "../../../node_modules/circomlib/circuits/poseidon.circom";
 include "../../../node_modules/circomlib/circuits/comparators.circom";
 
-/template MerkleTree1Leaf() {
+template MerkleTree1Leaf() {
     signal input leaf0;
     signal output root;
     

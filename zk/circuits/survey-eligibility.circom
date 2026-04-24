@@ -16,6 +16,7 @@ template MainCheck() {
     signal input merkleRoot;        // signed merkle root (from zkp.merkleRoot)
 
     signal input leaves[8];
+    signal input numLeaves;
 
     // = Attribute disclosures =
     signal input dobSalt;
@@ -43,6 +44,10 @@ template MainCheck() {
     sigVerifier.enabled <== 1;
 
     // 2. Reconstruct merkle tree
+    component merkleVerifier = MerkleTreeVerifier();
+    merkleVerifier.leaves <== leaves;
+    merkleVerifier.numLeaves <== numLeaves;
+    merkleVerifier.expectedRoot <== merkleRoot;
 
 
     // == HASH CHECKS ==
