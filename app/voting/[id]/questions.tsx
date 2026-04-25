@@ -84,7 +84,10 @@ export default function QuestionsScreen() {
 
   // ── Navigation ──
 
-  const canGoNext = !question.isRequired
+  const canGoNext =
+    !question.isRequired ||
+    (answer?.selectedOptions ?? []).length > 0 ||
+    (answer?.textValue ?? "").trim().length > 0
 
   const handleNext = () => {
     if (currentIndex < totalQuestions - 1) {
