@@ -38,7 +38,7 @@ const buildQuickVocdoniTestDraft = (): SurveyDraft => {
     return {
         name: `Gamer Habits & Preferences Survey #${randomSuffix}`,
         description: "A quick survey about your gaming habits, favourite genres and platforms.",
-        startDate: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+        startDate: now.toISOString(),
         endDate: endDate.toISOString(),
         tags: ["gaming", "games", "survey"],
         category: "Gaming",
