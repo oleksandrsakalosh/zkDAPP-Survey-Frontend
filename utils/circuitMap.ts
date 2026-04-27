@@ -7,7 +7,7 @@ import { RequirementType } from "@/domain/models";
  * Example: Age requirement uses "age" check which corresponds to age_check.circom
  */
 export const REQUIREMENT_CIRCUIT_MAP: Record<RequirementType, string> = {
-  Age: "age",
+  Age: "eligibility",
   Location: "location", // Future: to be implemented
   "Education level": "education", // Future: to be implemented
   "": "",
@@ -24,7 +24,7 @@ export function getCircuitKeyForRequirement(requirementType: RequirementType): s
  * Returns all implemented circuit keys (currently only "age" is supported).
  */
 export function getSupportedCircuitKeys(): string[] {
-  return ["age"];
+  return ["eligibility"];
 }
 
 /**

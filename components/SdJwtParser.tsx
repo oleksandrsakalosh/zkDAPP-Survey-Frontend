@@ -11,7 +11,7 @@ import { Picker } from "@react-native-picker/picker";
 import { MaterialIcons } from "@expo/vector-icons";
 
 import { palette } from "@/theme/palette";
-import { SD_JWT_MOCK_TOKENS } from "@/utils/sdjwt/mockTokens";
+import { SD_JWT_MOCK_TOKENS } from "@/utils/sdjwt/mockTookens";
 import { parseSdJwt } from "@/utils/sdjwt/parser";
 
 interface SdJwtParserProps {

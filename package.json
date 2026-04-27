@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "proof:service": "node zk/scripts/proofService.js",
+    "proof:eligibility": "node zk/scripts/runAgeProofFlow.js",
     "proof:age": "node zk/scripts/runAgeProofFlow.js"
   },
   "dependencies": {

@@ -1,13 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 const snarkjs = require('snarkjs');
-const { ageBuildDir } = require('./common');
-const { ageCircuit } = require('../config');
+const { eligibilityBuildDir } = require('./common');
+const { eligibilityCircuit } = require('../config');
 
 async function verifyProof() {
-  const verificationKeyPath = path.join(ageBuildDir, ageCircuit.verificationKeyFile);
-  const proofPath = path.join(ageBuildDir, ageCircuit.proofFile);
-  const publicSignalsPath = path.join(ageBuildDir, ageCircuit.publicSignalsFile);
+  const verificationKeyPath = path.join(eligibilityBuildDir, eligibilityCircuit.verificationKeyFile);
+  const proofPath = path.join(eligibilityBuildDir, eligibilityCircuit.proofFile);
+  const publicSignalsPath = path.join(eligibilityBuildDir, eligibilityCircuit.publicSignalsFile);
 
   if (!fs.existsSync(verificationKeyPath)) {
     throw new Error(`Missing verification key: ${verificationKeyPath}`);

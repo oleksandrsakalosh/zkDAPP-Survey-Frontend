@@ -14,8 +14,8 @@ import { MaterialIcons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 
 import { palette } from "@/theme/palette";
-import { SD_JWT_MOCK_TOKENS } from "@/utils/sdjwt/mockTokens";
-import { parseSdJwt } from "@/utils/sdjwt/parser";
+import { SD_JWT_MOCK_TOKENS } from "@/utils/sdjwt/mockTookens";
+import { buildEligibilityCircuitInputFromToken } from "@/utils/sdjwt/eligibilityInput";
 import {
   PROOF_CHECKS,
   ProofCheckDefinition,
@@ -63,8 +63,8 @@ function resolveProofServiceUrl(): string {
 
 export default function ProofGenerator({ onClose }: ProofGeneratorProps) {
   const [selectedMockId, setSelectedMockId] = useState<string>(SD_JWT_MOCK_TOKENS[0]?.id ?? "");
-  const [selectedCheckKey, setSelectedCheckKey] = useState<string>(PROOF_CHECKS[0]?.key ?? "age");
-  const [userValues, setUserValues] = useState<Record<string, string>>({ minAge: "18" });
+  const [selectedCheckKey, setSelectedCheckKey] = useState<string>(PROOF_CHECKS[0]?.key ?? "eligibility");
+  const [userValues, setUserValues] = useState<Record<string, string>>({ minAge: "18", enableAgeCheck: "1" });
   const [result, setResult] = useState<GenerationResult>({
     status: "idle",
     message: "Choose token/check and generate proof.",
@@ -111,37 +111,10 @@ export default function ProofGenerator({ onClose }: ProofGeneratorProps) {
       setResult({ status: "running-generate", message: "Generating witness and proof..." });
       setIsProofGenerated(false);
 
-      const parsed = parseSdJwt(selectedMock.token);
-      const input: Record<string, number> = {};
-
-      selectedCheck.inputs.forEach((field) => {
-        if (field.source === "computed") {
-          if (field.computedBy !== "utcPlus2CurrentDate") {
-            throw new Error(`Unsupported computed source for ${field.key}.`);
-          }
-          input[field.key] = Number(normalizeYyyyMmDd(getUtcPlus2YyyyMmDd(), field.label));
-          return;
-        }
-
-        if (field.source === "sd-jwt") {
-          const keyCandidates = field.sdJwtAttributeKeys ?? [];
-          const value = keyCandidates
-            .map((candidate) => parsed.attributes[candidate])
-            .find((candidate) => candidate != null && String(candidate).trim() !== "");
-
-          if (value == null) {
-            throw new Error(`${field.label} could not be resolved from the selected SD-JWT.`);
-          }
-
-          input[field.key] = Number(normalizeYyyyMmDd(value, field.label));
-          return;
-        }
-
-        const provided = String(userValues[field.key] ?? "").trim();
-        if (!/^\d+$/.test(provided)) {
-          throw new Error(`${field.label} must be a non-negative integer.`);
-        }
-        input[field.key] = Number(provided);
+      const input = buildEligibilityCircuitInputFromToken(selectedMock.token, {
+        currentDate: normalizeYyyyMmDd(getUtcPlus2YyyyMmDd(), "Current date"),
+        minAge: userValues.minAge,
+        enableAgeCheck: userValues.enableAgeCheck ?? "1",
       });
 
       const baseUrl = resolveProofServiceUrl();
@@ -149,9 +122,8 @@ export default function ProofGenerator({ onClose }: ProofGeneratorProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          currentDate: String(input.currentDate),
-          dobValue: String(input.dobValue),
-          minAge: input.minAge,
+          ...input,
+          surveyId: "proof-generator",
         }),
       });
 
