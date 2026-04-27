@@ -32,19 +32,26 @@ template MerkleTree3Leaves() {
     
     /*
      * Level 0: [L0, L1, L2]
-     * Level 1: [H(L0,L1), L2]
-     * Level 2: H(H(L0,L1), L2)
+     * i=0: hash(L0, L1)
+     * i=2: hash(L2, L2)  ← L2 duplicated!
+     * Level 1: [hash(L0,L1), hash(L2,L2)]
+     * i=0: hash(hash(L0,L1), hash(L2,L2))
      */
     
-    // Level 1
+    // Level 1: Hash first pair
     component hash01 = Poseidon(2);
     hash01.inputs[0] <== leaf0;
     hash01.inputs[1] <== leaf1;
     
-    // Level 2
+    // Level 1: Hash L2 with itself (duplicated)
+    component hash22 = Poseidon(2);
+    hash22.inputs[0] <== leaf2;
+    hash22.inputs[1] <== leaf2;
+    
+    // Level 2: Combine both hashes
     component hashRoot = Poseidon(2);
     hashRoot.inputs[0] <== hash01.out;
-    hashRoot.inputs[1] <== leaf2;
+    hashRoot.inputs[1] <== hash22.out;
     
     root <== hashRoot.out;
 }
@@ -89,12 +96,17 @@ template MerkleTree5Leaves() {
     
     /*
      * Level 0: [L0, L1, L2, L3, L4]
-     * Level 1: [H(L0,L1), H(L2,L3), L4]
-     * Level 2: [H(H(L0,L1),H(L2,L3)), L4]
-     * Level 3: H(H(H(L0,L1),H(L2,L3)), L4)
+     * i=0: hash(L0, L1)
+     * i=2: hash(L2, L3)
+     * i=4: hash(L4, L4)  ← L4 duplicated!
+     * Level 1: [hash(L0,L1), hash(L2,L3), hash(L4,L4)]  (3 items - odd!)
+     * i=0: hash(hash(L0,L1), hash(L2,L3))
+     * i=2: hash(hash(L4,L4), hash(L4,L4))  ← Duplicated again!
+     * Level 2: [hash(hash(L0,L1),hash(L2,L3)), hash(hash(L4,L4),hash(L4,L4))]
+     * i=0: hash(left, right)
      */
     
-    // Level 1: Pair leaves
+    // Level 1: Hash first two pairs
     component hash01 = Poseidon(2);
     hash01.inputs[0] <== leaf0;
     hash01.inputs[1] <== leaf1;
@@ -103,15 +115,25 @@ template MerkleTree5Leaves() {
     hash23.inputs[0] <== leaf2;
     hash23.inputs[1] <== leaf3;
     
-    // Level 2: Pair first two hashes
+    // Level 1: Hash L4 with itself
+    component hash44 = Poseidon(2);
+    hash44.inputs[0] <== leaf4;
+    hash44.inputs[1] <== leaf4;
+    
+    // Level 2: Hash first two
     component hash0123 = Poseidon(2);
     hash0123.inputs[0] <== hash01.out;
     hash0123.inputs[1] <== hash23.out;
     
-    // Level 3: Pair with L4
+    // Level 2: Hash hash44 with itself (duplicated)
+    component hash4444 = Poseidon(2);
+    hash4444.inputs[0] <== hash44.out;
+    hash4444.inputs[1] <== hash44.out;
+    
+    // Level 3: Final hash
     component hashRoot = Poseidon(2);
     hashRoot.inputs[0] <== hash0123.out;
-    hashRoot.inputs[1] <== leaf4;
+    hashRoot.inputs[1] <== hash4444.out;
     
     root <== hashRoot.out;
 }
@@ -170,12 +192,18 @@ template MerkleTree7Leaves() {
     
     /*
      * Level 0: [L0, L1, L2, L3, L4, L5, L6]
-     * Level 1: [H(L0,L1), H(L2,L3), H(L4,L5), L6]
-     * Level 2: [H(H(L0,L1),H(L2,L3)), H(H(L4,L5),L6)]
-     * Level 3: H(H(H(L0,L1),H(L2,L3)), H(H(L4,L5),L6))
+     * i=0: hash(L0, L1)
+     * i=2: hash(L2, L3)
+     * i=4: hash(L4, L5)
+     * i=6: hash(L6, L6)
+     * Level 1: [hash(L0,L1), hash(L2,L3), hash(L4,L5), hash(L6,L6)]  (4 items - even)
+     * i=0: hash(hash(L0,L1), hash(L2,L3))
+     * i=2: hash(hash(L4,L5), hash(L6,L6))
+     * Level 2: [hash(hash(L0,L1),hash(L2,L3)), hash(hash(L4,L5),hash(L6,L6))]
+     * i=0: hash(left, right)
      */
     
-    // Level 1: Pair leaves
+    // Level 1: Hash first three pairs
     component hash01 = Poseidon(2);
     hash01.inputs[0] <== leaf0;
     hash01.inputs[1] <== leaf1;
@@ -188,19 +216,24 @@ template MerkleTree7Leaves() {
     hash45.inputs[0] <== leaf4;
     hash45.inputs[1] <== leaf5;
     
-    // Level 2: Pair hashes
+    // Level 1: Hash L6 with itself (duplicated)
+    component hash66 = Poseidon(2);
+    hash66.inputs[0] <== leaf6;
+    hash66.inputs[1] <== leaf6;
+    
+    // Level 2: Now we have 4 hashes (even), pair them
     component hash0123 = Poseidon(2);
     hash0123.inputs[0] <== hash01.out;
     hash0123.inputs[1] <== hash23.out;
     
-    component hash45_6 = Poseidon(2);
-    hash45_6.inputs[0] <== hash45.out;
-    hash45_6.inputs[1] <== leaf6;
+    component hash4566 = Poseidon(2);
+    hash4566.inputs[0] <== hash45.out;
+    hash4566.inputs[1] <== hash66.out;
     
-    // Level 3: Final pair
+    // Level 3: Final hash
     component hashRoot = Poseidon(2);
     hashRoot.inputs[0] <== hash0123.out;
-    hashRoot.inputs[1] <== hash45_6.out;
+    hashRoot.inputs[1] <== hash4566.out;
     
     root <== hashRoot.out;
 }

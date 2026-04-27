@@ -3,52 +3,33 @@ const path = require('path');
 const zkRoot = path.join('zk');
 
 const checks = {
-  age: {
-    key: 'age',
-    label: 'Age Check',
-    description: 'Prove age threshold based on birth date disclosure.',
-    circuitName: 'age-check',
-    circuitFile: path.join(zkRoot, 'circuits', 'age-check.circom'),
-    buildDir: path.join(zkRoot, 'build', 'age'),
+  eligibility: {
+    key: 'eligibility',
+    label: 'Eligibility Check',
+    description: 'Prove eligibility with SD-JWT disclosures.',
+    circuitName: 'eligibility',
+    circuitFile: path.join(zkRoot, 'circuits', 'eligibility.circom'),
+    buildDir: path.join(zkRoot, 'build', 'v1'),
     ptauDir: path.join(zkRoot, 'ptau'),
     inputDir: path.join(zkRoot, 'inputs'),
-    inputFile: path.join(zkRoot, 'inputs', 'age-input.json'),
-    r1csFile: 'age-check.r1cs',
-    zkeyFile: 'age-check.zkey',
+    inputFile: path.join(zkRoot, 'inputs', 'eligibility-input.json'),
+    r1csFile: 'eligibility.r1cs',
+    zkeyFile: 'eligibility.zkey',
     verificationKeyFile: 'verification_key.json',
     proofFile: 'proof.json',
     publicSignalsFile: 'public.json',
     witnessFile: 'witness.wtns',
-    wasmDirectory: 'age-check_js',
-    wasmFile: 'age-check.wasm',
+    wasmDirectory: 'eligibility_js',
+    wasmFile: 'eligibility.wasm',
     witnessCalculatorFile: 'generate_witness.js',
-    inputs: [
-      {
-        key: 'currentDate',
-        source: 'computed',
-        format: 'yyyymmdd',
-        computedBy: 'utcPlus2CurrentDate',
-      },
-      {
-        key: 'dobValue',
-        source: 'sd-jwt',
-        format: 'yyyymmdd',
-        sdJwtAttributeKeys: ['birth_date', 'date_of_birth', 'dob', 'dobValue'],
-      },
-      {
-        key: 'minAge',
-        source: 'user',
-        format: 'nonNegativeInteger',
-        label: 'Minimum age',
-      },
-    ],
   },
 };
 
 const circuits = checks;
-const ageCircuit = checks.age;
+const eligibilityCircuit = checks.eligibility;
+const ageCircuit = eligibilityCircuit;
 
-function getCircuitConfig(circuitKey = 'age') {
+function getCircuitConfig(circuitKey = 'eligibility') {
   const circuitConfig = checks[circuitKey];
   if (!circuitConfig) {
     throw new Error(`Unknown circuit key: ${circuitKey}`);
@@ -60,6 +41,7 @@ module.exports = {
   zkRoot,
   checks,
   circuits,
+  eligibilityCircuit,
   ageCircuit,
   getCircuitConfig,
 };

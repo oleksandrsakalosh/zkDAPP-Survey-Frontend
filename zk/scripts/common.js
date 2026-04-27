@@ -3,9 +3,9 @@ const path = require('path');
 const { getCircuitConfig, zkRoot } = require('../config');
 
 const projectRoot = process.cwd();
-const ageCircuit = getCircuitConfig('age');
-const ageBuildDir = path.join(projectRoot, ageCircuit.buildDir);
-const ageInputPath = path.join(projectRoot, ageCircuit.inputFile);
+const eligibilityCircuit = getCircuitConfig('eligibility');
+const eligibilityBuildDir = path.join(projectRoot, eligibilityCircuit.buildDir);
+const eligibilityInputPath = path.join(projectRoot, eligibilityCircuit.inputFile);
 
 function ensureDirectory(filePath) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
@@ -93,17 +93,22 @@ function getTimestampYyyyMmDd(now = new Date()) {
   return `${year}${month}${day}`;
 }
 
-function getTimestampedInputPath(now = new Date()) {
-  const fileName = `${getTimestampYyyyMmDd(now)}.json`;
-  return path.join(projectRoot, ageCircuit.inputDir, fileName);
+function getSurveyInputPath(surveyId = 'manual', stampOrNow = new Date()) {
+  const safeSurveyId = String(surveyId || 'manual').trim().replace(/[^a-zA-Z0-9._-]/g, '-');
+  const fileStamp = typeof stampOrNow === 'string' ? stampOrNow : getTimestampYyyyMmDd(stampOrNow);
+  const fileName = `${safeSurveyId}-${fileStamp}.json`;
+  return path.join(projectRoot, eligibilityCircuit.inputDir, fileName);
 }
 
 module.exports = {
   projectRoot,
   zkRoot,
-  ageCircuit,
-  ageBuildDir,
-  ageInputPath,
+  eligibilityCircuit,
+  ageCircuit: eligibilityCircuit,
+  eligibilityBuildDir,
+  eligibilityInputPath,
+  ageBuildDir: eligibilityBuildDir,
+  ageInputPath: eligibilityInputPath,
   ensureDirectory,
   readJson,
   writeJson,
@@ -111,7 +116,7 @@ module.exports = {
   normalizeNonNegativeInteger,
   getCurrentDateYyyyMmDdUtcPlus2,
   getTimestampYyyyMmDd,
-  getTimestampedInputPath,
+  getSurveyInputPath,
   resolveAgeParsedDobValue,
   resolveAgeCircuitInput,
 };

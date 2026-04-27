@@ -1,8 +1,7 @@
 const http = require('http');
 const {
-  runAgeProofFlow,
-  generateAgeProofArtifacts,
-  verifyGeneratedAgeProof,
+  generateEligibilityProofArtifacts,
+  verifyGeneratedEligibilityProof,
 } = require('./runAgeProofFlow');
 
 const PORT = Number(process.env.PROOF_SERVICE_PORT || 8787);
@@ -44,50 +43,61 @@ function readJsonBody(req) {
   });
 }
 
+function isInputValidationError(message) {
+  const normalized = String(message || '').toLowerCase();
+  return (
+    normalized.includes('missing')
+    || normalized.includes('required')
+    || normalized.includes('invalid json')
+    || normalized.includes('unsupported check key')
+  );
+}
+
+function isAssertionOrWitnessFailure(message) {
+  const normalized = String(message || '').toLowerCase();
+  return (
+    normalized.includes('assert failed')
+    || normalized.includes('assertion failed')
+    || normalized.includes('failed to generate witness')
+    || normalized.includes('proof generation failed')
+    || normalized.includes('proof verification failed')
+    || normalized.includes('constraint')
+  );
+}
+
+function toPublicErrorMessage(error, fallbackMessage) {
+  const message = error instanceof Error ? error.message : '';
+
+  if (isInputValidationError(message)) {
+    return message;
+  }
+
+  if (isAssertionOrWitnessFailure(message)) {
+    return fallbackMessage;
+  }
+
+  return message || fallbackMessage;
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     sendJson(res, 204, {});
     return;
   }
 
-  if (req.method === 'POST' && req.url === '/proof/age') {
-    try {
-      const body = await readJsonBody(req);
-      const result = await runAgeProofFlow({
-        currentDate: body.currentDate,
-        dobValue: body.dobValue,
-        minAge: body.minAge,
-      });
-
-      sendJson(res, 200, {
-        ok: result.ok,
-        inputPath: result.inputPath,
-        input: result.input,
-      });
-      return;
-    } catch (error) {
-      sendJson(res, 400, {
-        ok: false,
-        error: error instanceof Error ? error.message : 'Proof generation failed.',
-      });
-      return;
-    }
-  }
-
   const generateMatch = req.method === 'POST' && req.url && req.url.match(/^\/proof\/([^/]+)\/generate$/);
   if (generateMatch) {
     const checkKey = generateMatch[1];
-    if (checkKey !== 'age') {
+    if (checkKey !== 'age' && checkKey !== 'eligibility') {
       sendJson(res, 400, { ok: false, error: `Unsupported check key: ${checkKey}` });
       return;
     }
 
     try {
       const body = await readJsonBody(req);
-      const result = await generateAgeProofArtifacts({
-        currentDate: body.currentDate,
-        dobValue: body.dobValue,
-        minAge: body.minAge,
+      const result = await generateEligibilityProofArtifacts({
+        input: body,
+        surveyId: body.surveyId,
       });
 
       sendJson(res, 200, {
@@ -99,7 +109,7 @@ const server = http.createServer(async (req, res) => {
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
-        error: error instanceof Error ? error.message : 'Proof generation failed.',
+        error: toPublicErrorMessage(error, 'Eligibility verification failed.'),
       });
       return;
     }
@@ -108,19 +118,19 @@ const server = http.createServer(async (req, res) => {
   const verifyMatch = req.method === 'POST' && req.url && req.url.match(/^\/proof\/([^/]+)\/verify$/);
   if (verifyMatch) {
     const checkKey = verifyMatch[1];
-    if (checkKey !== 'age') {
+    if (checkKey !== 'age' && checkKey !== 'eligibility') {
       sendJson(res, 400, { ok: false, error: `Unsupported check key: ${checkKey}` });
       return;
     }
 
     try {
-      const result = await verifyGeneratedAgeProof();
+      const result = await verifyGeneratedEligibilityProof();
       sendJson(res, 200, { ok: result.ok });
       return;
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
-        error: error instanceof Error ? error.message : 'Proof verification failed.',
+        error: toPublicErrorMessage(error, 'Eligibility verification failed.'),
       });
       return;
     }
