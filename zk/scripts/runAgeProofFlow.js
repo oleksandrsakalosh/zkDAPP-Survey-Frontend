@@ -1,15 +1,17 @@
 const path = require('path');
-const { buildAgeInputToFile } = require('./buildAgeInput');
+const { buildEligibilityInputToFile } = require('./buildAgeInput');
 const { generateWitness } = require('./generateWitness');
 const { generateProof } = require('./generateProof');
 const { verifyProof } = require('./verifyProof');
-const { getTimestampedInputPath } = require('./common');
+const { getSurveyInputPath, getTimestampYyyyMmDd } = require('./common');
 
-async function generateAgeProofArtifacts({ currentDate, dobValue, minAge }) {
-  const outputPath = getTimestampedInputPath();
+async function generateEligibilityProofArtifacts({ input, surveyId }) {
+  const currentDate = String(input?.currentDate ?? getTimestampYyyyMmDd()).trim();
+  const outputPath = getSurveyInputPath(surveyId, currentDate);
+  const { surveyId: _ignoredSurveyId, ...circuitInput } = input || {};
 
-  const { input } = buildAgeInputToFile(
-    { currentDate, dobValue, minAge },
+  const { input: writtenInput } = buildEligibilityInputToFile(
+    circuitInput,
     outputPath,
   );
 
@@ -19,11 +21,11 @@ async function generateAgeProofArtifacts({ currentDate, dobValue, minAge }) {
   return {
     ok: true,
     inputPath: path.relative(process.cwd(), outputPath),
-    input,
+    input: writtenInput,
   };
 }
 
-async function verifyGeneratedAgeProof() {
+async function verifyGeneratedEligibilityProof() {
   const isValid = await verifyProof();
 
   return {
@@ -31,9 +33,9 @@ async function verifyGeneratedAgeProof() {
   };
 }
 
-async function runAgeProofFlow({ currentDate, dobValue, minAge }) {
-  const generated = await generateAgeProofArtifacts({ currentDate, dobValue, minAge });
-  const verified = await verifyGeneratedAgeProof();
+async function runEligibilityProofFlow({ input, surveyId }) {
+  const generated = await generateEligibilityProofArtifacts({ input, surveyId });
+  const verified = await verifyGeneratedEligibilityProof();
 
   return {
     ...generated,
@@ -42,11 +44,10 @@ async function runAgeProofFlow({ currentDate, dobValue, minAge }) {
 }
 
 if (require.main === module) {
-  const currentDate = process.argv[2];
-  const dobValue = process.argv[3];
-  const minAge = process.argv[4];
+  const input = process.argv[2] ? JSON.parse(process.argv[2]) : {};
+  const surveyId = process.argv[3];
 
-  runAgeProofFlow({ currentDate, dobValue, minAge })
+  runEligibilityProofFlow({ input, surveyId })
     .then((result) => {
       console.log(JSON.stringify(result, null, 2));
     })
@@ -57,7 +58,10 @@ if (require.main === module) {
 }
 
 module.exports = {
-  runAgeProofFlow,
-  generateAgeProofArtifacts,
-  verifyGeneratedAgeProof,
+  runEligibilityProofFlow,
+  generateEligibilityProofArtifacts,
+  verifyGeneratedEligibilityProof,
+  runAgeProofFlow: runEligibilityProofFlow,
+  generateAgeProofArtifacts: generateEligibilityProofArtifacts,
+  verifyGeneratedAgeProof: verifyGeneratedEligibilityProof,
 };

@@ -18,21 +18,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
-import { parseSdJwt, ParsedSdJwtResult } from "@/utils/sdjwt/parser";
+import { buildEligibilityCircuitInputFromToken } from "@/utils/sdjwt/eligibilityInput";
 import {
   CREDENTIAL_TYPES,
   CredentialType,
   getCredentialTypeConfig,
 } from "@/utils/credentialConfig";
-import {
-  getProofCheckByKey,
-  getUtcPlus2YyyyMmDd,
-} from "@/utils/zk/proofChecks";
+import { getUtcPlus2YyyyMmDd } from "@/utils/zk/proofChecks";
 import {
   getAttributeCandidatesForRequirement,
   extractNumericValue,
 } from "@/utils/requirementAttributeMap";
-import { getCircuitKeyForRequirement, isRequirementSupported } from "@/utils/circuitMap";
 import { RequirementType, SurveyDetail } from "@/domain/models";
 import { loadRegisteredSurveyDetail } from "@/utils/registry/feed";
 
@@ -152,23 +148,21 @@ function getRequestedClaimsForCredential(
 
   return config.attributes
     .map((attribute) => attribute.id)
-    .filter((attributeId) => candidates.has(attributeId));
+    .filter((attributeId) => candidates.has(attributeId) || attributeId === "expiry_date");
 }
 
-/**
- * Extracts an attribute value from parsed SD-JWT using candidate attribute names.
- */
-function extractAttributeFromSdJwt(
-  candidates: string[],
-  parsed: ParsedSdJwtResult
-): unknown {
-  for (const candidate of candidates) {
-    const value = parsed.attributes[candidate];
-    if (value != null && String(value).trim() !== "") {
-      return value;
-    }
+function resolveAgeRequirement(requirements: { type: string; value: string }[]): { enableAgeCheck: string; minAge: string } {
+  const ageRequirement = requirements.find((requirement) => requirement.type === "Age");
+  if (!ageRequirement) {
+    return { enableAgeCheck: "0", minAge: "0" };
   }
-  return undefined;
+
+  const minAge = extractNumericValue(ageRequirement.value);
+  if (minAge == null) {
+    throw new Error(`Could not extract an age value from "${ageRequirement.value}".`);
+  }
+
+  return { enableAgeCheck: "1", minAge: String(minAge) };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -379,171 +373,90 @@ export default function EligibilityScreen() {
       setErrorMessage("");
       logProof(`Using SD-JWT from ${sourceLabel}.`);
       logProof(`Survey requirements: ${requirements.map((req) => `${req.type} ${req.value}`).join(", ")}`);
+      const eligibilitySettings = resolveAgeRequirement(requirements);
+      const proofInput = buildEligibilityCircuitInputFromToken(sdJwtToken, {
+        currentDate: normalizeYyyyMmDd(getUtcPlus2YyyyMmDd(), "Current date"),
+        minAge: eligibilitySettings.minAge,
+        enableAgeCheck: eligibilitySettings.enableAgeCheck,
+      });
+      const normalizedDobValue = normalizeYyyyMmDd(proofInput.dobValue, "Birth date");
+      const normalizedExpValue = normalizeYyyyMmDd(proofInput.expValue, "Expiry date");
+      const finalProofInput = {
+        ...proofInput,
+        dobValue: normalizedDobValue,
+        expValue: normalizedExpValue,
+      };
 
-      // Parse the SD-JWT presentation received from Valera.
-      const parsed = parseSdJwt(sdJwtToken);
-      logProof(`SD-JWT parsed successfully. Available attributes: ${Object.keys(parsed.attributes).join(", ")}`);
+      const surveyId = String(survey?.id ?? id ?? "survey");
+      const result: RequirementCheckResult = {
+        requirementId: surveyId,
+        requirementType: "Eligibility",
+        requirementValue: eligibilitySettings.enableAgeCheck === "1" ? `Age ${eligibilitySettings.minAge}+` : "No age check",
+        status: "generating",
+        message: "Generating proof...",
+        minValue: Number(eligibilitySettings.minAge),
+        attributeValue: proofInput.dobValue,
+        normalizedAttributeValue: normalizedDobValue,
+        currentDate: finalProofInput.currentDate,
+      };
 
-      // Process each requirement
-      const results: RequirementCheckResult[] = [];
+      setRequirementChecks([result]);
+      logProof(`Prepared eligibility proof for survey ${surveyId}. enableAgeCheck=${eligibilitySettings.enableAgeCheck}, minAge=${eligibilitySettings.minAge}`);
+      console.log("[Eligibility] Proof input:", JSON.stringify(finalProofInput, null, 2));
 
-      for (const req of requirements) {
-        const result: RequirementCheckResult = {
-          requirementId: req.id,
-          requirementType: req.type,
-          requirementValue: req.value,
-          status: "pending",
-          message: "",
-        };
+      const baseUrl = resolveProofServiceUrl();
+      const response = await fetchWithTimeout(`${baseUrl}/proof/eligibility/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...finalProofInput,
+          surveyId,
+        }),
+      });
 
-        // Check if requirement type is supported
-        if (!isRequirementSupported(req.type)) {
-          result.status = "failed";
-          result.message = `Requirement type "${req.type}" not yet supported.`;
-          results.push(result);
-          setRequirementChecks([...results]);
-          logProof(`[${req.type}] ${result.message}`);
-          continue;
-        }
-
-        // Get circuit key for this requirement
-        const circuitKey = getCircuitKeyForRequirement(req.type);
-        if (!circuitKey) {
-          result.status = "failed";
-          result.message = `No circuit configured for "${req.type}".`;
-          results.push(result);
-          setRequirementChecks([...results]);
-          logProof(`[${req.type}] ${result.message}`);
-          continue;
-        }
-
-        try {
-          // Extract minimum value from requirement (e.g., "18+" → 18)
-          const minValue = extractNumericValue(req.value);
-          if (minValue === null) {
-            throw new Error(`Could not extract numeric value from "${req.value}".`);
-          }
-
-          // Get the check definition to understand what attributes we need
-          const checkDef = getProofCheckByKey(circuitKey);
-          if (!checkDef) {
-            throw new Error(`No check definition found for circuit "${circuitKey}".`);
-          }
-
-          // Extract required attributes from SD-JWT
-          const candidates = getAttributeCandidatesForRequirement(req.type);
-          if (candidates.length === 0) {
-            throw new Error(`No attribute candidates defined for "${req.type}".`);
-          }
-
-          const attributeValue = extractAttributeFromSdJwt(candidates, parsed);
-          if (attributeValue === undefined) {
-            throw new Error(
-              `Required attribute(s) [${candidates.join(", ")}] not found in the selected SD-JWT.`
-            );
-          }
-
-          logProof(
-            `[${req.type}] Using attribute ${candidates.find((candidate) => parsed.attributes[candidate] != null && String(parsed.attributes[candidate]).trim() !== "") ?? candidates[0]} = ${String(attributeValue)}`,
-          );
-
-          // Prepare proof input
-          const input: Record<string, string | number> = {};
-
-          for (const field of checkDef.inputs) {
-            if (field.source === "computed") {
-              if (field.computedBy !== "utcPlus2CurrentDate") {
-                throw new Error(`Unsupported computed source for ${field.key}.`);
-              }
-              input[field.key] = normalizeYyyyMmDd(getUtcPlus2YyyyMmDd(), field.label);
-            } else if (field.source === "sd-jwt") {
-              input[field.key] = normalizeYyyyMmDd(attributeValue, field.label);
-            } else if (field.key === "minAge") {
-              // Use the extracted minimum value from survey requirement
-              input[field.key] = minValue;
-            }
-          }
-
-          result.status = "generating";
-          result.message = "Generating proof...";
-          result.minValue = minValue;
-          result.attributeValue = String(attributeValue);
-          result.normalizedAttributeValue = String(input.dobValue ?? "");
-          result.currentDate = String(input.currentDate ?? "");
-          results.push(result);
-          setRequirementChecks([...results]);
-          logProof(
-            `[${req.type}] Generating proof for circuit "${circuitKey}" with minAge=${minValue}, currentDate=${String(input.currentDate)}, dobValue=${String(input.dobValue)}`,
-          );
-          console.log("[Eligibility] Proof input:", JSON.stringify(input, null, 2));
-
-          // Call proof service to generate proof
-          const baseUrl = resolveProofServiceUrl();
-          const response = await fetchWithTimeout(`${baseUrl}/proof/${circuitKey}/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              currentDate: String(input.currentDate),
-              dobValue: String(input.dobValue),
-              minAge: input.minAge,
-            }),
-          });
-
-          const payload = await response.json();
-          if (!response.ok || !payload.ok) {
-            throw new Error(payload.error || "Proof generation failed.");
-          }
-
-          logProof(`[${req.type}] Proof generation succeeded. inputPath=${payload.inputPath}`);
-
-          // Verify the proof
-          const verifyResponse = await fetchWithTimeout(`${baseUrl}/proof/${circuitKey}/verify`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          });
-
-          const verifyPayload = await verifyResponse.json();
-          if (!verifyResponse.ok) {
-            throw new Error(verifyPayload.error || "Verification request failed.");
-          }
-
-          if (!verifyPayload.ok) {
-            throw new Error("Proof verification failed.");
-          }
-
-          logProof(`[${req.type}] Proof verification succeeded.`);
-
-          // Success!
-          result.status = "ok";
-          result.message = "Proof generation OK";
-          result.inputPath = String(payload.inputPath ?? "");
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Unknown error during verification.";
-          result.status = "failed";
-          result.message = message;
-          logProof(`[${req.type}] ${message}`);
-        }
-
-        const existingIndex = results.findIndex((check) => check.requirementId === result.requirementId);
-        if (existingIndex >= 0) {
-          results[existingIndex] = result;
-        } else {
-          results.push(result);
-        }
-        setRequirementChecks([...results]);
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Proof generation failed.");
       }
 
-      // All checks done
-      const allChecksPassed = results.length > 0 && results.every((r) => r.status === "ok");
-      setStep(allChecksPassed ? "confirmed" : "error");
-      setRequirementChecks(results);
-      logProof(allChecksPassed ? "All proof checks passed." : "At least one proof check failed.");
+      logProof(`Eligibility proof generation succeeded. inputPath=${payload.inputPath}`);
+
+      const verifyResponse = await fetchWithTimeout(`${baseUrl}/proof/eligibility/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const verifyPayload = await verifyResponse.json();
+      if (!verifyResponse.ok) {
+        throw new Error(verifyPayload.error || "Verification request failed.");
+      }
+
+      if (!verifyPayload.ok) {
+        throw new Error("Proof verification failed.");
+      }
+
+      result.status = "ok";
+      result.message = "Proof generation OK";
+      result.inputPath = String(payload.inputPath ?? "");
+      setRequirementChecks([result]);
+      setStep("confirmed");
+      logProof("Eligibility proof verification succeeded.");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unexpected error.");
+      const message = error instanceof Error ? error.message : "Unexpected error.";
+      setErrorMessage(message);
       setStep("error");
-      logProof(error instanceof Error ? error.message : "Unexpected error.");
+      setRequirementChecks([
+        {
+          requirementId: String(survey?.id ?? id ?? "survey"),
+          requirementType: "Eligibility",
+          requirementValue: "",
+          status: "failed",
+          message,
+        },
+      ]);
+      logProof(message);
     }
-  }, [id, logProof, requirements]);
+  }, [id, logProof, requirements, survey]);
 
   const handleProceed = () => {
     router.push(`/voting/${id}/questions` as any);
