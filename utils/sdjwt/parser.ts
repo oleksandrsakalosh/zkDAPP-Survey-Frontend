@@ -174,6 +174,7 @@ export function parseSdJwt(rawToken: string): ParsedSdJwtResult {
     const issuerJwt = decodeJwtPart(issuerJwtPart);
     const disclosures = parseDisclosures(disclosureParts, warnings);
 
+    const payloadObj = issuerJwt.payloadJson as Record<string, unknown> | null;
     const attributes: Record<string, unknown> = {};
     disclosures.forEach((disclosure) => {
         if (disclosure.claimName) {
@@ -185,7 +186,6 @@ export function parseSdJwt(rawToken: string): ParsedSdJwtResult {
         warnings.push("Key-binding JWT missing.");
     }
 
-    const payloadObj = issuerJwt.payloadJson as Record<string, unknown> | null;
     const maybeCnf = payloadObj && typeof payloadObj === "object" ? payloadObj.cnf : undefined;
     if (!maybeCnf) {
         warnings.push("cnf/jwk missing.");
