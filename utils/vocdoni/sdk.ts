@@ -6,10 +6,26 @@ import { getOrCreateDeviceWallet } from '@/utils/vocdoni/wallet';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const getVocdoniSdk = () => require('@vocdoni/sdk');
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error && typeof error.message === 'string') {
+    return error.message;
+  }
+
+  if (typeof error === 'string') {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return 'unknown';
+  }
+};
+
 const isDevFaucetCooldownError = (error: unknown): error is Error =>
   error instanceof Error &&
-  error.message.includes('already funded') &&
-  error.message.includes('wait until');
+  getErrorMessage(error).includes('already funded') &&
+  getErrorMessage(error).includes('wait until');
 
 const formatFaucetCooldownMessage = (error: Error) => {
   const waitUntilMatch = error.message.match(/wait until ([0-9:-]+ [0-9:]+) \+0000 UTC/i);
@@ -67,7 +83,7 @@ export const ensureVocdoniAccount = async (wallet: Wallet) => {
   } catch (fetchError) {
     console.log('[vocdoni-sdk] ensureAccount:creatingWithoutSik', {
       address: wallet.address,
-      reason: fetchError instanceof Error ? fetchError.message : 'unknown',
+      reason: getErrorMessage(fetchError),
     });
   }
 

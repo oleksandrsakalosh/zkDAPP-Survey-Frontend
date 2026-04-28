@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
-    Alert,
     Platform,
     Pressable,
     ScrollView,
@@ -22,6 +21,7 @@ import {
     loadRegisteredSurveyResultsDetail,
 } from "@/utils/registry/feed";
 import { palette } from "@/theme/palette";
+import { showAlert } from "@/utils/platformAlert";
 
 const RESULT_COLORS = [
     palette.success,
@@ -182,7 +182,7 @@ export default function SurveyResultsScreen() {
                 message: `Survey results\n\n${surveyResults.detail.title}\nSurvey ID: ${surveyResults.detail.id}\nResponses: ${surveyResults.detail.progress?.responseCount ?? 0}`,
             });
         } catch (error) {
-            Alert.alert(
+            showAlert(
                 "Share failed",
                 error instanceof Error ? error.message : "Unable to share survey results."
             );
@@ -213,7 +213,7 @@ export default function SurveyResultsScreen() {
             });
 
             if (Platform.OS === "web") {
-                Alert.alert("CSV exported", `File prepared: ${fileName}`);
+                showAlert("CSV exported", `File prepared: ${fileName}`);
                 return;
             }
 
@@ -225,10 +225,10 @@ export default function SurveyResultsScreen() {
                     dialogTitle: "Export survey results CSV",
                 });
             } else {
-                Alert.alert("CSV exported", `Saved to ${fileUri}`);
+                showAlert("CSV exported", `Saved to ${fileUri}`);
             }
         } catch (error) {
-            Alert.alert(
+            showAlert(
                 "Export failed",
                 error instanceof Error ? error.message : "Unable to export survey results."
             );

@@ -61,6 +61,33 @@ export default function SurveyCard({ survey, onVote, voteLabel = "Vote" }: Props
                 })}
             </View>
 
+            {(survey.requirements?.length ?? 0) > 0 && (
+                <View style={styles.infoBlock}>
+                    <Text style={styles.infoLabel}>Eligibility</Text>
+                    {survey.requirements?.map((requirement) => (
+                        <Text key={requirement.id} style={styles.infoText}>
+                            {requirement.type}: {requirement.value}
+                        </Text>
+                    ))}
+                </View>
+            )}
+
+            {(survey.questions?.length ?? 0) > 0 && (
+                <View style={styles.infoBlock}>
+                    <Text style={styles.infoLabel}>Questions</Text>
+                    {survey.questions?.slice(0, 3).map((question) => (
+                        <Text key={question.id} style={styles.infoText}>
+                            {question.order}. {question.title}
+                        </Text>
+                    ))}
+                    {(survey.questions?.length ?? 0) > 3 && (
+                        <Text style={styles.infoText}>
+                            +{(survey.questions?.length ?? 0) - 3} more
+                        </Text>
+                    )}
+                </View>
+            )}
+
             <View style={styles.divider} />
 
             <View style={styles.cardFooter}>
@@ -143,6 +170,24 @@ const styles = StyleSheet.create({
     tagText: {
         fontSize: 11,
         fontWeight: "600",
+    },
+    infoBlock: {
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.surfaceMuted,
+        padding: 10,
+        gap: 4,
+    },
+    infoLabel: {
+        color: palette.primaryDark,
+        fontSize: 12,
+        fontWeight: "800",
+    },
+    infoText: {
+        color: palette.textSecondary,
+        fontSize: 12,
+        lineHeight: 17,
     },
     divider: {
         height: 1,

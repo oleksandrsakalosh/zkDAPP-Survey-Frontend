@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -17,7 +16,13 @@ import * as FileSystem from "expo-file-system/legacy";
 
 import { SurveyManageDetail, SurveyRequirement } from "@/domain/models";
 import { palette } from "@/theme/palette";
+import { getMyCreatedElections } from "@/services/contractService";
+import { ContractElectionStatus } from "@/types/election";
+import { loadOrFetchElectionMetadata } from "@/utils/electionMetadataStore";
 import { loadRegisteredSurveyDetail } from "@/utils/registry/feed";
+import { showAlert } from "@/utils/platformAlert";
+import { createVocdoniClient } from "@/utils/vocdoni/sdk";
+import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
 
 function formatWholeMoney(amount: number, currency: string) {
   return `${amount.toFixed(0)} ${currency}`;
@@ -55,6 +60,107 @@ function formatClosesLabel(closesAt?: string) {
   }).format(new Date(closesAt));
 }
 
+const daysRemainingFrom = (iso?: string) => {
+  if (!iso) {
+    return 0;
+  }
+
+  const diffMs = new Date(iso).getTime() - Date.now();
+  return Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+};
+
+const loadContractManageDetail = async (selectedId: string): Promise<SurveyManageDetail | null> => {
+  const chainId = selectedId.startsWith("chain-") ? Number(selectedId.replace("chain-", "")) : null;
+  const createdElections = await getMyCreatedElections();
+  const election = createdElections.find(
+    (candidate) =>
+      candidate.status === ContractElectionStatus.Started &&
+      (candidate.vocdoniElectionId === selectedId || candidate.id === chainId)
+  );
+
+  if (!election?.vocdoniElectionId) {
+    return null;
+  }
+
+  const wallet = await getOrCreateDeviceWallet();
+  const client = await createVocdoniClient(wallet);
+  client.setElectionId(election.vocdoniElectionId);
+  await client.fetchElection(election.vocdoniElectionId);
+
+  const stored = await loadOrFetchElectionMetadata({
+    electionId: election.id,
+    metadataURI: election.metadataURI,
+    metadataHash: election.metadataHash,
+    eligibilityHash: election.eligibilityHash,
+  });
+  const metadata = stored?.metadata;
+  const eligibility = stored?.eligibility;
+  const responseCount = election.registeredVoters;
+  const targetResponses = election.maxVoters || election.registeredVoters;
+  const rewardPerVoter = metadata?.rewardPerVoter ?? 0;
+  const endDateIso =
+    metadata?.endDate ??
+    (election.endDate > 0 ? new Date(election.endDate * 1000).toISOString() : undefined);
+  const startDateIso =
+    metadata?.startDate ??
+    (election.startDate > 0 ? new Date(election.startDate * 1000).toISOString() : undefined);
+
+  return {
+    id: election.vocdoniElectionId,
+    title: metadata?.title || `On-chain survey #${election.id}`,
+    description:
+      metadata?.description ||
+      "Contract-backed Vocdoni survey using the ERC1155 eligibility token census.",
+    status: endDateIso && new Date(endDateIso).getTime() <= Date.now() ? "results" : "active",
+    categories: [
+      {
+        id: (metadata?.category || "on-chain").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        label: metadata?.category || "On-chain",
+      },
+    ],
+    tags: metadata?.tags.map((tag) => ({
+      id: tag.toLowerCase().replace(/[^a-z0-9]+/g, "-") || tag,
+      label: tag,
+    })),
+    estimatedMinutes: Math.max(1, metadata?.questions.length || 1),
+    budget: {
+      rewardPerVoter: {
+        amount: rewardPerVoter,
+        currency: "TOKEN",
+      },
+      paidCap: targetResponses,
+      remainingBudget: {
+        amount: Math.max(0, (targetResponses - responseCount) * rewardPerVoter),
+        currency: "TOKEN",
+      },
+    },
+    progress: {
+      responseCount,
+      paidResponseCount: responseCount,
+      targetResponses,
+      paidCap: targetResponses,
+      paidSlotsLeft: Math.max(0, targetResponses - responseCount),
+    },
+    eligibility: {
+      decision: "qualify",
+      matchedRequirements: [],
+      failedRequirements: [],
+      checkedAt: new Date().toISOString(),
+    },
+    requirements: eligibility?.requirements ?? [],
+    questions: metadata?.questions ?? [],
+    timeInfo: {
+      opensAt: startDateIso,
+      closesAt: endDateIso,
+      isOpen: true,
+      daysRemaining: daysRemainingFrom(endDateIso),
+      displayLabel: formatDurationLabel(startDateIso, endDateIso),
+    },
+    recentResponses: [],
+    allowedActions: ["share", "export_csv"],
+  };
+};
+
 export default function ManageSurveyPage() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const selectedId = Array.isArray(params.id) ? params.id[0] : params.id;
@@ -81,39 +187,47 @@ export default function ManageSurveyPage() {
           excludeVoted: false,
         });
 
-        if (!surveyDetail) {
-          throw new Error("Survey not found in the registry feed.");
-        }
+        if (surveyDetail) {
+          if (!isMounted) {
+            return;
+          }
 
-        if (!isMounted) {
+          const rewardPerVoter = surveyDetail.detail.budget?.rewardPerVoter?.amount ?? 0;
+          const rewardCurrency = surveyDetail.detail.budget?.rewardPerVoter?.currency ?? "USD";
+          const responseCount = surveyDetail.detail.progress?.responseCount ?? 0;
+          const targetResponses = surveyDetail.detail.progress?.targetResponses ?? 0;
+          const remainingBudgetAmount = Math.max(0, (targetResponses - responseCount) * rewardPerVoter);
+
+          setSurvey({
+            ...surveyDetail.detail,
+            budget: {
+              ...surveyDetail.detail.budget,
+              paidCap: targetResponses,
+              remainingBudget: {
+                amount: remainingBudgetAmount,
+                currency: rewardCurrency,
+              },
+            },
+            progress: {
+              ...surveyDetail.detail.progress,
+              paidResponseCount: responseCount,
+              paidCap: targetResponses,
+              paidSlotsLeft: Math.max(0, targetResponses - responseCount),
+            },
+            recentResponses: [],
+            allowedActions: ["share", "export_csv"],
+          });
           return;
         }
 
-        const rewardPerVoter = surveyDetail.detail.budget?.rewardPerVoter?.amount ?? 0;
-        const rewardCurrency = surveyDetail.detail.budget?.rewardPerVoter?.currency ?? "USD";
-        const responseCount = surveyDetail.detail.progress?.responseCount ?? 0;
-        const targetResponses = surveyDetail.detail.progress?.targetResponses ?? 0;
-        const remainingBudgetAmount = Math.max(0, (targetResponses - responseCount) * rewardPerVoter);
+        const contractDetail = await loadContractManageDetail(selectedId);
+        if (!contractDetail) {
+          throw new Error("Survey not found in your contract-created Vocdoni surveys.");
+        }
 
-        setSurvey({
-          ...surveyDetail.detail,
-          budget: {
-            ...surveyDetail.detail.budget,
-            paidCap: targetResponses,
-            remainingBudget: {
-              amount: remainingBudgetAmount,
-              currency: rewardCurrency,
-            },
-          },
-          progress: {
-            ...surveyDetail.detail.progress,
-            paidResponseCount: responseCount,
-            paidCap: targetResponses,
-            paidSlotsLeft: Math.max(0, targetResponses - responseCount),
-          },
-          recentResponses: [],
-          allowedActions: ["share", "export_csv"],
-        });
+        if (isMounted) {
+          setSurvey(contractDetail);
+        }
       } catch (error) {
         if (!isMounted) {
           return;
@@ -243,7 +357,7 @@ export default function ManageSurveyPage() {
       });
 
       if (Platform.OS === "web") {
-        Alert.alert("CSV exported", `File prepared: ${fileName}`);
+        showAlert("CSV exported", `File prepared: ${fileName}`);
         return;
       }
 
@@ -255,11 +369,11 @@ export default function ManageSurveyPage() {
           dialogTitle: "Export survey CSV",
         });
       } else {
-        Alert.alert("CSV exported", `Saved to ${fileUri}`);
+        showAlert("CSV exported", `Saved to ${fileUri}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to export CSV.";
-      Alert.alert("Export failed", message);
+      showAlert("Export failed", message);
     } finally {
       setIsExporting(false);
     }

@@ -679,8 +679,14 @@ export default function AuthCallbackScreen() {
 
         setCallbackData(receivedData);
 
-        if (flow === 'eligibility' && surveyId) {
-          console.log('[AuthCallback] Forwarding eligibility presentation to voting flow:', {
+        if ((flow === 'eligibility' || flow === 'registerEligibility') && surveyId) {
+          const targetRoute =
+            flow === 'registerEligibility'
+              ? `/register/${surveyId}/eligibility`
+              : `/voting/${surveyId}/eligibility`;
+
+          console.log('[AuthCallback] Forwarding eligibility presentation:', {
+            flow,
             surveyId,
             requestId: requestId || 'N/A',
             hasPresentation: Boolean(presentationRaw),
@@ -703,7 +709,7 @@ export default function AuthCallbackScreen() {
             query.set('errorMessage', errorMessage);
           }
 
-          router.replace(`/voting/${surveyId}/eligibility?${query.toString()}` as any);
+          router.replace(`${targetRoute}?${query.toString()}` as any);
           return;
         }
 

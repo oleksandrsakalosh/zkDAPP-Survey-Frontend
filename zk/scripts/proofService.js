@@ -79,10 +79,45 @@ function toPublicErrorMessage(error, fallbackMessage) {
   return message || fallbackMessage;
 }
 
+function normalizeProofError(error) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (message.includes('Assert Failed') || message.includes('Error in template AgeCheck')) {
+    return 'Not eligible: credential does not satisfy the age requirement.';
+  }
+  return message || 'Proof generation failed.';
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     sendJson(res, 204, {});
     return;
+  }
+
+  if (req.method === 'POST' && req.url === '/proof/age') {
+    try {
+      const body = await readJsonBody(req);
+      const result = await runAgeProofFlow({
+        currentDate: body.currentDate,
+        dobValue: body.dobValue,
+        minAge: body.minAge,
+      });
+
+      sendJson(res, 200, {
+        ok: result.ok,
+        inputPath: result.inputPath,
+        input: result.input,
+        proof: result.proof,
+        publicSignals: result.publicSignals,
+        calldata: result.calldata,
+      });
+      return;
+    } catch (error) {
+      sendJson(res, 400, {
+        ok: false,
+        error: normalizeProofError(error),
+      });
+      return;
+    }
   }
 
   const generateMatch = req.method === 'POST' && req.url && req.url.match(/^\/proof\/([^/]+)\/generate$/);
@@ -104,12 +139,15 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         inputPath: result.inputPath,
         input: result.input,
+        proof: result.proof,
+        publicSignals: result.publicSignals,
+        calldata: result.calldata,
       });
       return;
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
-        error: toPublicErrorMessage(error, 'Eligibility verification failed.'),
+        error: normalizeProofError(error),
       });
       return;
     }
