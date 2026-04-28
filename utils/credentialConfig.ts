@@ -1,4 +1,10 @@
-export type CredentialType = 'mdl' | 'pid' | 'health_id' | 'age_verification';
+export type CredentialType =
+  | 'mdl'
+  | 'pid'
+  | 'health_id'
+  | 'age_verification'
+  | 'residence_permit'
+  | 'passport';
 
 export interface CredentialAttribute {
   id: string;          // Attribute identifier (e.g., 'given_name')
@@ -11,6 +17,7 @@ export interface CredentialTypeConfig {
   label: string;
   description: string;
   vct: string;           // Verifiable Credential Type for SD-JWT
+  credentialTypes?: string[];
   isoDocType: string;    // ISO document type (for ISO mDoc matching)
   attributes: CredentialAttribute[];
 }
@@ -94,6 +101,38 @@ export const CREDENTIAL_TYPES: CredentialTypeConfig[] = [
       { id: 'document_number', label: 'Document Number', selected: false },
       { id: 'administrative_number', label: 'Administrative Number', selected: false },
       { id: 'issuing_jurisdiction', label: 'Issuing Jurisdiction', selected: false },
+    ],
+  },
+  {
+    id: 'residence_permit',
+    label: 'Residence Permit',
+    description: 'Residence Permit Credential',
+    vct: 'ResidencePermit',
+    credentialTypes: ['ResidencePermit'],
+    isoDocType: 'ResidencePermit',
+    attributes: [
+      { id: 'country_code', label: 'Country Code', selected: true },
+      { id: 'first_name', label: 'First Name', selected: true },
+      { id: 'last_name', label: 'Last Name', selected: true },
+      { id: 'permit_number', label: 'Permit Number', selected: true },
+    ],
+  },
+  {
+    id: 'passport',
+    label: 'Passport',
+    description: 'Passport Credential',
+    vct: 'Passport8',
+    credentialTypes: ['Passport8'],
+    isoDocType: 'Passport8',
+    attributes: [
+      { id: 'first_name', label: 'First Name', selected: true },
+      { id: 'last_name', label: 'Last Name', selected: true },
+      { id: 'birth_date', label: 'Birth Date', selected: true },
+      { id: 'document_id', label: 'Document ID', selected: true },
+      { id: 'country_code', label: 'Country Code', selected: true },
+      { id: 'issuance_date', label: 'Issuance Date', selected: true },
+      { id: 'expiry_date', label: 'Expiry Date', selected: true },
+      { id: 'issuing_country', label: 'Issuing Country', selected: true },
     ],
   },
   {

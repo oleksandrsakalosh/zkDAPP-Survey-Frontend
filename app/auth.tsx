@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, ScrollView, Pressable, Share } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -40,6 +40,7 @@ type CallbackData = {
   status: string;
   requestId: string;
   receivedAt: string;
+  rawSdJwtPresentation: string;
   parsedCircuitInput: ParsedCircuitInput;
   circuitInput: CircuitInput;
   errorCode?: string;
@@ -533,6 +534,7 @@ function tryParseJson(value?: string | null) {
 export default function AuthCallbackScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+  const processedCallbackRef = useRef<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(true);
   const [callbackData, setCallbackData] = useState<CallbackData | null>(null);
   const [debugLogs, setDebugLogs] = useState<string[]>([]);
@@ -575,6 +577,18 @@ export default function AuthCallbackScreen() {
           return;
         }
 
+        const callbackKey = JSON.stringify({
+          requestId: params.requestId,
+          presentation: params.presentation,
+          errorCode: params.errorCode,
+          flow: params.flow,
+          surveyId: params.surveyId,
+        });
+        if (processedCallbackRef.current === callbackKey) {
+          return;
+        }
+        processedCallbackRef.current = callbackKey;
+
         setIsProcessing(true);
 
         const status = params.status as string | undefined;
@@ -582,12 +596,24 @@ export default function AuthCallbackScreen() {
         const presentation = params.presentation as string | undefined;
         const errorCode = params.errorCode as string | undefined;
         const errorMessage = params.errorMessage as string | undefined;
+        const flow = params.flow as string | undefined;
+        const surveyId = params.surveyId as string | undefined;
         const voteHash = (params.voteHash as string | undefined) || '';
         const holderSignatureFromResponse = (params.holderSignature as string | undefined) || '';
         const holderPublicKeyFromResponse = (params.holderPublicKey as string | undefined) || '';
         const holderAlgFromResponse = (params.holderAlg as string | undefined) || '';
         const requestedClaimsRaw = params.requestedClaims as string | undefined;
         const requestedAttributes = parseStringArray(requestedClaimsRaw);
+
+        console.log('[AuthCallback] Params received:', {
+          flow: flow || 'N/A',
+          surveyId: surveyId || 'N/A',
+          requestId: requestId || 'N/A',
+          hasPresentation: Boolean(presentation),
+          presentationLength: typeof presentation === 'string' ? presentation.length : 0,
+          requestedClaimsRaw: requestedClaimsRaw || 'N/A',
+          errorCode: errorCode || 'N/A',
+        });
 
         const presentationRaw = typeof presentation === 'string' ? presentation : null;
         const parsedSdJwt = parseSdJwtPresentation(presentationRaw);
@@ -633,6 +659,7 @@ export default function AuthCallbackScreen() {
           status: status || 'unknown',
           requestId: requestId || 'N/A',
           receivedAt: new Date().toLocaleString(),
+          rawSdJwtPresentation: presentationRaw || '',
           parsedCircuitInput,
           circuitInput,
           errorCode: errorCode || undefined,
@@ -646,10 +673,39 @@ export default function AuthCallbackScreen() {
         appendDebugLog(`Error code=${receivedData.errorCode || 'N/A'}`);
 
         // Mirror payloads in terminal logs to ease copy/paste and offline inspection.
+        logJsonToTerminal('Raw SD-JWT Presentation', receivedData.rawSdJwtPresentation);
         logJsonToTerminal('Raw Response', receivedData.parsedCircuitInput);
         logJsonToTerminal('Circuit Input', receivedData.circuitInput);
 
         setCallbackData(receivedData);
+
+        if (flow === 'eligibility' && surveyId) {
+          console.log('[AuthCallback] Forwarding eligibility presentation to voting flow:', {
+            surveyId,
+            requestId: requestId || 'N/A',
+            hasPresentation: Boolean(presentationRaw),
+            presentationLength: presentationRaw?.length ?? 0,
+          });
+
+          const query = new URLSearchParams({
+            requestId: requestId || '',
+            requestedClaims: requestedClaimsRaw || '',
+            nonceChallenge: (params.nonceChallenge as string | undefined) || '',
+          });
+
+          if (presentationRaw) {
+            query.set('presentation', presentationRaw);
+          }
+          if (errorCode) {
+            query.set('errorCode', errorCode);
+          }
+          if (errorMessage) {
+            query.set('errorMessage', errorMessage);
+          }
+
+          router.replace(`/voting/${surveyId}/eligibility?${query.toString()}` as any);
+          return;
+        }
 
         await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -678,6 +734,8 @@ export default function AuthCallbackScreen() {
     params.requestedClaims,
     params.errorCode,
     params.errorMessage,
+    params.flow,
+    params.surveyId,
     params.credential,
     params.did,
     params.timestamp,
@@ -718,6 +776,21 @@ export default function AuthCallbackScreen() {
                 <View style={styles.dataRow}>
                   <Text style={styles.dataLabel}>Received At:</Text>
                   <Text style={styles.dataValue}>{callbackData.receivedAt}</Text>
+                </View>
+
+                <Text style={styles.dataTitle}>Raw SD-JWT from Valera</Text>
+                <View style={styles.credentialBox}>
+                  <Text style={styles.credentialText}>
+                    {callbackData.rawSdJwtPresentation || 'No presentation parameter received.'}
+                  </Text>
+                </View>
+                <View style={styles.actionsRow}>
+                  <Pressable
+                    style={({ pressed }) => [styles.secondaryButton, pressed && styles.secondaryButtonPressed]}
+                    onPress={() => sharePayload('Raw SD-JWT from Valera', callbackData.rawSdJwtPresentation)}
+                  >
+                    <Text style={styles.secondaryButtonText}>Share Raw SD-JWT</Text>
+                  </Pressable>
                 </View>
 
                 <Text style={styles.dataTitle}>Raw Response</Text>

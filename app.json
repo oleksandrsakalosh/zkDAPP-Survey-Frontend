@@ -33,6 +33,10 @@
             {
               "scheme": "zkdappsurveyfrontend",
               "host": "auth"
+            },
+            {
+              "scheme": "zkdappsurveyfrontend",
+              "host": "voting"
             }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
