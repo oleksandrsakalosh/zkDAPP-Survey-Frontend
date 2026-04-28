@@ -18,7 +18,7 @@ This app is built with Expo + React Native and currently includes a tab-based st
 
 - Node.js 20 LTS (recommended)
 - npm 10+
-- Android Studio (with Android SDK installed)
+- Android Studio (with Android SDK and NDK installed — NDK is required to compile native ZK modules)
 - Android Emulator or physical device
 - IDE: VS Code (recommended)
 
@@ -52,17 +52,13 @@ $env:EXPO_PUBLIC_REGISTRY_RPC_URL="https://ethereum-sepolia-rpc.publicnode.com"
 
 ### 4. Run The Project
 
-Start the Expo dev server:
+Build and run on Android emulator/device:
 
 ```bash
-npx expo start
+npm run android
 ```
 
-Build and run on Android emulator:
-
-```bash
-npx expo run:android
-```
+> **Note:** `npx expo start` / Expo Go will not work — the app uses native modules (mopro ZK proofs, react-native-fs) that require a full native build.
 
 ## Running with Valera Wallet
 
@@ -73,26 +69,19 @@ To test credential sharing with Valera wallet, you'll need both apps running on 
 2. Set up Valera wallet - see [Valera README](../valera/README.md#quick-setup) for setup instructions
 3. Both apps will communicate via deep links on the same emulator
 
-## Proof Generator (Test Flow)
+## ZK Proof Generation
 
-- Start proof service in a separate terminal:
-
-```bash
-npm run proof:service
-```
-
-> **Note:** Right now the app uses backend to generate/verify proofs. Ideally this should be moved to the client side completely, but the possibility of it is questioned. Reason: this would drain the device resources and UX would be cooked.
-
+Proof generation runs fully on-device using [mopro](https://zkmopro.org). No backend or proof service is required.
 
 
 ## Useful Scripts
 
-- `npm run start` - start Expo dev server
-- `npm run android` - run on Android emulator/device
+- `npm run start` - start Expo dev server (Metro only, no native build)
+- `npm run android` - build and run on Android emulator/device
 - `npm run ios` - run on iOS simulator/device
 - `npm run web` - run web target
 - `npm run lint` - run lint checks
-- `npm run proof:service` - local proof service for Proof Generator test flow
+- `npm run assets` - re-link assets (zkey files) to Android without a full rebuild
 
 ## Project Structure
 

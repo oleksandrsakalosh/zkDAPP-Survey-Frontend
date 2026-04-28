@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,12 +11,12 @@ import { Picker } from "@react-native-picker/picker";
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
-import Constants from "expo-constants";
+
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
 import { SD_JWT_MOCK_TOKENS } from "@/utils/sdjwt/mockTookens";
-import { buildEligibilityCircuitInputFromToken } from "@/utils/sdjwt/eligibilityInput";
+import { buildEligibilityCircuitInputFromToken, EligibilityCircuitInput } from "@/utils/sdjwt/eligibilityInput";
 import { extractNumericValue } from "@/utils/requirementAttributeMap";
 import { getUtcPlus2YyyyMmDd } from "@/utils/zk/proofChecks";
 
@@ -46,25 +45,34 @@ function normalizeYyyyMmDd(value: unknown, label: string): string {
   return asString;
 }
 
-function resolveProofServiceUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_PROOF_SERVICE_URL;
-  if (fromEnv && fromEnv.trim()) {
-    return fromEnv.trim();
+async function getZkeyPath(): Promise<string> {
+  const RNFS = (await import("react-native-fs")).default;
+  const filename = "eligibility.zkey";
+  const destPath = RNFS.DocumentDirectoryPath + "/" + filename;
+  if (!(await RNFS.exists(destPath))) {
+    await RNFS.copyFileAssets("custom/" + filename, destPath);
   }
+  return destPath;
+}
 
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:8787";
-  }
-
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    const host = hostUri.split(":")[0];
-    if (host) {
-      return `http://${host}:8787`;
-    }
-  }
-
-  return "http://localhost:8787";
+function toMoproInputs(input: EligibilityCircuitInput): Record<string, string[]> {
+  return {
+    pubKey: [...input.pubKey],
+    signatureR8: [...input.signatureR8],
+    signatureS: [input.signatureS],
+    merkleRoot: [input.merkleRoot],
+    leaves: [...input.leaves],
+    numLeaves: [input.numLeaves],
+    dobSalt: [input.dobSalt],
+    dobKey: [input.dobKey],
+    dobValue: [input.dobValue],
+    expSalt: [input.expSalt],
+    expKey: [input.expKey],
+    expValue: [input.expValue],
+    currentDate: [input.currentDate],
+    minAge: [input.minAge],
+    enableAgeCheck: [input.enableAgeCheck],
+  };
 }
 
 function resolveAgeRequirement(requirements: Array<{ type: string; value: string }>): { enableAgeCheck: string; minAge: string } {
@@ -161,40 +169,24 @@ export default function EligibilityScreen() {
       setRequirementChecks([result]);
       logProof(`Prepared eligibility proof for survey ${surveyId}. enableAgeCheck=${eligibilitySettings.enableAgeCheck}, minAge=${eligibilitySettings.minAge}`);
 
-      const baseUrl = resolveProofServiceUrl();
-      const response = await fetch(`${baseUrl}/proof/eligibility/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...proofInput,
-          surveyId,
-        }),
-      });
+      const zkeyPath = await getZkeyPath();
+      logProof(`Using zkey at: ${zkeyPath}`);
 
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Proof generation failed.");
-      }
+      const { generateCircomProof, verifyCircomProof, ProofLib } = await import("mopro-ffi");
+      const proofResult = generateCircomProof(
+        zkeyPath,
+        JSON.stringify(toMoproInputs(proofInput)),
+        ProofLib.Arkworks,
+      );
+      logProof("Proof generated. Verifying...");
 
-      logProof(`Eligibility proof generation succeeded. inputPath=${payload.inputPath}`);
-
-      const verifyResponse = await fetch(`${baseUrl}/proof/eligibility/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const verifyPayload = await verifyResponse.json();
-      if (!verifyResponse.ok) {
-        throw new Error(verifyPayload.error || "Verification request failed.");
-      }
-
-      if (!verifyPayload.ok) {
+      const isValid = verifyCircomProof(zkeyPath, proofResult, ProofLib.Arkworks);
+      if (!isValid) {
         throw new Error("Proof verification failed.");
       }
 
       result.status = "ok";
       result.message = "Proof generation OK";
-      result.inputPath = String(payload.inputPath ?? "");
       setRequirementChecks([result]);
       setStep("confirmed");
       logProof("Eligibility proof verification succeeded.");
