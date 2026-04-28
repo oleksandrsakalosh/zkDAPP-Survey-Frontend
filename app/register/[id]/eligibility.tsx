@@ -1,10 +1,11 @@
 import Feather from "@expo/vector-icons/Feather";
-import { Picker } from "@react-native-picker/picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -20,21 +21,31 @@ import {
   registerForElection,
   verifyEligibilityProofOnChain,
 } from "@/services/contractService";
+import { RequirementType } from "@/domain/models";
 import { palette } from "@/theme/palette";
 import { ChainElection, ContractElectionStatus, Groth16ProofCalldata } from "@/types/election";
 import { loadOrFetchElectionMetadata, StoredElectionMetadata } from "@/utils/electionMetadataStore";
-import { getCircuitKeyForRequirement, isRequirementSupported } from "@/utils/circuitMap";
+import { showAlert } from "@/utils/platformAlert";
 import {
   extractNumericValue,
   getAttributeCandidatesForRequirement,
 } from "@/utils/requirementAttributeMap";
-import { SD_JWT_MOCK_TOKENS } from "@/utils/sdjwt/mockTokens";
-import { parseSdJwt, ParsedSdJwtResult } from "@/utils/sdjwt/parser";
-import { getProofCheckByKey, getUtcPlus2YyyyMmDd } from "@/utils/zk/proofChecks";
+import { buildEligibilityCircuitInputFromToken } from "@/utils/sdjwt/eligibilityInput";
 import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
-import { showAlert } from "@/utils/platformAlert";
+import {
+  CREDENTIAL_TYPES,
+  CredentialType,
+  getCredentialTypeConfig,
+} from "@/utils/credentialConfig";
+import { getUtcPlus2YyyyMmDd } from "@/utils/zk/proofChecks";
 
-type Step = "loading" | "select-mock" | "generating" | "confirmed" | "error";
+type Step =
+  | "loading"
+  | "request-credential"
+  | "waiting-wallet"
+  | "generating"
+  | "confirmed"
+  | "error";
 
 type RequirementCheckResult = {
   requirementId: string;
@@ -43,6 +54,8 @@ type RequirementCheckResult = {
   status: "pending" | "generating" | "ok" | "failed";
   message: string;
   attributeValue?: string;
+  normalizedAttributeValue?: string;
+  currentDate?: string;
   minValue?: number;
   inputPath?: string;
 };
@@ -54,15 +67,59 @@ type ProofServiceResponse = {
   calldata?: Groth16ProofCalldata;
 };
 
-const normalizeYyyyMmDd = (value: unknown, label: string): string => {
-  const asString = String(value ?? "").trim();
-  if (!/^\d{8}$/.test(asString)) {
-    throw new Error(`${label} must be in yyyymmdd format.`);
-  }
-  return asString;
-};
+const REGISTER_SURVEY_CACHE_KEY_PREFIX = "register-survey:";
 
-const resolveProofServiceUrl = () => {
+function getFirstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function getRegisterSurveyCacheKey(electionId: number): string {
+  return `${REGISTER_SURVEY_CACHE_KEY_PREFIX}${electionId}`;
+}
+
+function normalizeYyyyMmDd(value: unknown, label: string): string {
+  const asString = String(value ?? "").trim();
+  if (/^\d{8}$/.test(asString)) {
+    return asString;
+  }
+
+  const isoMatch = asString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    return `${isoMatch[1]}${isoMatch[2]}${isoMatch[3]}`;
+  }
+
+  const europeanMatch = asString.match(/^(\d{2})[./-](\d{2})[./-](\d{4})$/);
+  if (europeanMatch) {
+    return `${europeanMatch[3]}${europeanMatch[2]}${europeanMatch[1]}`;
+  }
+
+  throw new Error(`${label} must be a date like yyyymmdd, yyyy-mm-dd, or dd.mm.yyyy.`);
+}
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit,
+  timeoutMs = 20_000,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`Proof service request timed out after ${timeoutMs / 1000}s.`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function resolveProofServiceUrl(): string {
   const fromEnv = process.env.EXPO_PUBLIC_PROOF_SERVICE_URL;
   if (fromEnv?.trim()) {
     return fromEnv.trim();
@@ -75,34 +132,63 @@ const resolveProofServiceUrl = () => {
   const hostUri = Constants.expoConfig?.hostUri;
   const host = hostUri?.split(":")[0];
   return host ? `http://${host}:8787` : "http://localhost:8787";
-};
+}
 
-const extractAttributeFromSdJwt = (
-  candidates: string[],
-  parsed: ParsedSdJwtResult
-): unknown => {
-  for (const candidate of candidates) {
-    const value = parsed.attributes[candidate];
-    if (value != null && String(value).trim() !== "") {
-      return value;
-    }
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
   }
-  return undefined;
-};
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
 
-const isElectionExpired = (election: ChainElection) => {
+function getRequestedClaimsForCredential(
+  credentialType: CredentialType,
+  requirements: { type: RequirementType }[],
+): string[] {
+  const config = getCredentialTypeConfig(credentialType);
+  if (!config) return [];
+
+  const candidates = new Set(
+    requirements.flatMap((requirement) => getAttributeCandidatesForRequirement(requirement.type)),
+  );
+
+  return config.attributes
+    .map((attribute) => attribute.id)
+    .filter((attributeId) => candidates.has(attributeId) || attributeId === "expiry_date");
+}
+
+function resolveAgeRequirement(requirements: { type: string; value: string }[]) {
+  const ageRequirement = requirements.find((requirement) => requirement.type === "Age");
+  if (!ageRequirement) {
+    return { enableAgeCheck: "0", minAge: "0" };
+  }
+
+  const minAge = extractNumericValue(ageRequirement.value);
+  if (minAge == null) {
+    throw new Error(`Could not extract an age value from "${ageRequirement.value}".`);
+  }
+
+  return { enableAgeCheck: "1", minAge: String(minAge) };
+}
+
+function isElectionExpired(election: ChainElection) {
   const nowSeconds = Math.floor(Date.now() / 1000);
   return election.endDate > 0 && election.endDate <= nowSeconds;
-};
+}
 
-const isUint256Value = (value: unknown): value is string | number => {
+function isUint256Value(value: unknown): value is string | number | bigint {
+  if (typeof value === "bigint") {
+    return value >= 0n;
+  }
   if (typeof value === "number") {
     return Number.isInteger(value) && value >= 0;
   }
   return typeof value === "string" && /^(0x[0-9a-fA-F]+|\d+)$/.test(value);
-};
+}
 
-const isProofCalldata = (value: unknown): value is Groth16ProofCalldata => {
+function isProofCalldata(value: unknown): value is Groth16ProofCalldata {
   const proof = value as Groth16ProofCalldata | undefined;
   return Boolean(
     proof &&
@@ -116,46 +202,52 @@ const isProofCalldata = (value: unknown): value is Groth16ProofCalldata => {
       proof.pi_c.length === 2 &&
       proof.pi_c.every(isUint256Value) &&
       Array.isArray(proof.pubInputs) &&
-      proof.pubInputs.length === 2 &&
+      proof.pubInputs.length >= 2 &&
       proof.pubInputs.every(isUint256Value)
   );
-};
-
-const assertAgeRequirementSatisfied = (
-  currentDate: string | number | undefined,
-  dobValue: string | number | undefined,
-  minAge: number,
-  requirementValue: string
-) => {
-  const current = Number(currentDate);
-  const dob = Number(dobValue);
-  if (!Number.isFinite(current) || !Number.isFinite(dob)) {
-    return;
-  }
-
-  if (current - dob < minAge * 10000) {
-    throw new Error(`Not eligible: selected credential does not satisfy Age ${requirementValue}.`);
-  }
-};
+}
 
 export default function RegisterEligibilityScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{
+    id: string;
+    presentation?: string;
+    requestedClaims?: string;
+    requestId?: string;
+    status?: string;
+    errorCode?: string;
+    errorMessage?: string;
+  }>();
   const insets = useSafeAreaInsets();
+  const processedPresentationRef = useRef<string | null>(null);
+
+  const electionId = Number(getFirstParam(params.id));
+  const hasReturnedPresentation = Boolean(getFirstParam(params.presentation));
+
   const [step, setStep] = useState<Step>("loading");
+  const [selectedCredentialType, setSelectedCredentialType] = useState<CredentialType>("passport");
   const [election, setElection] = useState<ChainElection | null>(null);
   const [storedMetadata, setStoredMetadata] = useState<StoredElectionMetadata | null>(null);
-  const [selectedMockId, setSelectedMockId] = useState<string>(SD_JWT_MOCK_TOKENS[0]?.id ?? "");
   const [requirementChecks, setRequirementChecks] = useState<RequirementCheckResult[]>([]);
   const [eligibilityProof, setEligibilityProof] = useState<Groth16ProofCalldata | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isRegistering, setIsRegistering] = useState(false);
 
-  const electionId = Number(id);
   const requirements = useMemo(
     () => storedMetadata?.eligibility.requirements ?? [],
-    [storedMetadata?.eligibility.requirements]
+    [storedMetadata?.eligibility.requirements],
   );
-  const selectedMock = SD_JWT_MOCK_TOKENS.find((mock) => mock.id === selectedMockId);
+  const selectedCredentialConfig = getCredentialTypeConfig(selectedCredentialType);
+  const requestedClaims = useMemo(
+    () => getRequestedClaimsForCredential(selectedCredentialType, requirements),
+    [requirements, selectedCredentialType],
+  );
+  const title = storedMetadata?.metadata.title ?? (election ? `Election #${election.id}` : "Register");
+  const isPreparingReturnedPresentation =
+    hasReturnedPresentation && !errorMessage && (step === "loading" || step === "request-credential" || step === "waiting-wallet");
+
+  const logProof = useCallback((message: string) => {
+    console.log(`[RegisterEligibility] ${message}`);
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -168,8 +260,9 @@ export default function RegisterEligibilityScreen() {
 
         setStep("loading");
         setErrorMessage("");
-        const nextElection = await getElection(electionId);
+        setEligibilityProof(null);
 
+        const nextElection = await getElection(electionId);
         if (nextElection.status !== ContractElectionStatus.Created) {
           throw new Error("This election is not open for registration.");
         }
@@ -190,26 +283,28 @@ export default function RegisterEligibilityScreen() {
           eligibilityHash: nextElection.eligibilityHash,
         });
 
-        if (!isMounted) {
-          return;
+        if (!metadata) {
+          throw new Error("Unable to load election metadata.");
         }
+
+        await AsyncStorage.setItem(getRegisterSurveyCacheKey(electionId), JSON.stringify(metadata));
+
+        if (!isMounted) return;
 
         setElection(nextElection);
         setStoredMetadata(metadata);
         setRequirementChecks(
-          (metadata?.eligibility.requirements ?? []).map((requirement) => ({
+          metadata.eligibility.requirements.map((requirement) => ({
             requirementId: requirement.id,
             requirementType: requirement.type,
             requirementValue: requirement.value,
             status: "pending",
             message: "",
-          }))
+          })),
         );
-        setStep("select-mock");
+        setStep(hasReturnedPresentation ? "waiting-wallet" : "request-credential");
       } catch (error) {
-        if (!isMounted) {
-          return;
-        }
+        if (!isMounted) return;
         setErrorMessage(error instanceof Error ? error.message : "Unable to load registration.");
         setStep("error");
       }
@@ -220,20 +315,83 @@ export default function RegisterEligibilityScreen() {
     return () => {
       isMounted = false;
     };
-  }, [electionId]);
+  }, [electionId, hasReturnedPresentation]);
 
-  const logProof = (message: string) => {
-    console.log(`[RegisterEligibility] ${message}`);
-  };
-
-  const handleStartVerification = async () => {
-    if (!selectedMock?.token && requirements.length > 0) {
-      setErrorMessage("No mock SD-JWT selected.");
+  const handleRequestCredential = async () => {
+    if (!Number.isInteger(electionId) || electionId <= 0) {
+      setErrorMessage("Invalid election id.");
       return;
     }
 
-    if (requirements.length === 0) {
-      setErrorMessage("This contract requires a ZK eligibility proof. Add a supported requirement before publishing surveys.");
+    const credentialConfig = getCredentialTypeConfig(selectedCredentialType);
+    if (!credentialConfig) {
+      setErrorMessage("Invalid credential type.");
+      return;
+    }
+
+    if (requestedClaims.length === 0) {
+      setErrorMessage(
+        `No matching claims for ${credentialConfig.label}. Choose another credential or check the survey requirements.`,
+      );
+      return;
+    }
+
+    try {
+      setStep("waiting-wallet");
+      setErrorMessage("");
+      setRequirementChecks([]);
+      setEligibilityProof(null);
+
+      const requestId = `reg_elig_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+      const nonce = `register_eligibility_nonce_${fnv1aHex(
+        `${requestId}|${electionId}|${[...requestedClaims].sort().join(",")}`,
+      )}`;
+      const callbackUrl = `zkdappsurveyfrontend://auth?flow=registerEligibility&surveyId=${encodeURIComponent(
+        String(electionId),
+      )}&requestId=${encodeURIComponent(requestId)}&requestedClaims=${encodeURIComponent(
+        JSON.stringify(requestedClaims),
+      )}&nonceChallenge=${encodeURIComponent(nonce)}`;
+
+      const requestPayload = {
+        version: "1.0",
+        requestId,
+        presentationType: "sd-jwt",
+        aud: "zkdapp-survey-frontend",
+        nonce,
+        callbackUrl,
+        ...(credentialConfig.credentialTypes
+          ? { credentialTypes: credentialConfig.credentialTypes }
+          : {}),
+        credentialQuery: {
+          vct: credentialConfig.vct,
+          requestedClaims,
+        },
+        options: {
+          allowUserSelectSubset: true,
+        },
+      };
+
+      const valeraUrl = `asitplus-wallet://share?action=share&callback=${encodeURIComponent(
+        callbackUrl,
+      )}&type=${encodeURIComponent(credentialConfig.vct)}&requestId=${encodeURIComponent(
+        requestId,
+      )}&requestedClaims=${encodeURIComponent(JSON.stringify(requestedClaims))}&request=${encodeURIComponent(
+        JSON.stringify(requestPayload),
+      )}`;
+
+      logProof(`Requesting ${credentialConfig.label} from Valera. Claims: ${requestedClaims.join(", ")}`);
+      await Linking.openURL(valeraUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to open Valera.";
+      setErrorMessage(message);
+      setStep("request-credential");
+      showAlert("Error", message);
+    }
+  };
+
+  const handleStartVerification = useCallback(async (sdJwtToken: string, sourceLabel: string) => {
+    if (!sdJwtToken.trim()) {
+      setErrorMessage("No SD-JWT presentation received from Valera.");
       setStep("error");
       return;
     }
@@ -242,130 +400,137 @@ export default function RegisterEligibilityScreen() {
       setStep("generating");
       setErrorMessage("");
       setEligibilityProof(null);
-      const token = selectedMock?.token;
-      if (!token) {
-        throw new Error("No mock SD-JWT selected.");
+
+      const eligibilitySettings = resolveAgeRequirement(requirements);
+      logProof(`Using SD-JWT from ${sourceLabel}.`);
+      logProof(
+        `Survey requirements: ${
+          requirements.length
+            ? requirements.map((requirement) => `${requirement.type} ${requirement.value}`).join(", ")
+            : "none"
+        }`,
+      );
+
+      const proofInput = buildEligibilityCircuitInputFromToken(sdJwtToken, {
+        currentDate: normalizeYyyyMmDd(getUtcPlus2YyyyMmDd(), "Current date"),
+        minAge: eligibilitySettings.minAge,
+        enableAgeCheck: eligibilitySettings.enableAgeCheck,
+      });
+      const normalizedDobValue =
+        eligibilitySettings.enableAgeCheck === "1"
+          ? normalizeYyyyMmDd(proofInput.dobValue, "Birth date")
+          : proofInput.dobValue;
+      const normalizedExpValue = normalizeYyyyMmDd(proofInput.expValue, "Expiry date");
+      const finalProofInput = {
+        ...proofInput,
+        dobValue: normalizedDobValue,
+        expValue: normalizedExpValue,
+      };
+
+      const result: RequirementCheckResult = {
+        requirementId: String(electionId),
+        requirementType: "Eligibility",
+        requirementValue:
+          eligibilitySettings.enableAgeCheck === "1"
+            ? `Age ${eligibilitySettings.minAge}+`
+            : "Credential validity",
+        status: "generating",
+        message: "Generating proof...",
+        minValue: Number(eligibilitySettings.minAge),
+        attributeValue: proofInput.dobValue,
+        normalizedAttributeValue: normalizedDobValue,
+        currentDate: finalProofInput.currentDate,
+      };
+      setRequirementChecks([result]);
+
+      const baseUrl = resolveProofServiceUrl();
+      const response = await fetchWithTimeout(`${baseUrl}/proof/eligibility/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...finalProofInput,
+          surveyId: String(electionId),
+        }),
+      });
+
+      const payload = (await response.json()) as ProofServiceResponse;
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Proof generation failed.");
+      }
+      if (!isProofCalldata(payload.calldata)) {
+        throw new Error("Proof service did not return Solidity proof calldata. Restart the updated proof service.");
       }
 
-      const parsed = parseSdJwt(token);
-      const results: RequirementCheckResult[] = [];
+      logProof(`Eligibility proof generation succeeded. inputPath=${payload.inputPath ?? "N/A"}`);
 
-      for (const requirement of requirements) {
-        const result: RequirementCheckResult = {
-          requirementId: requirement.id,
-          requirementType: requirement.type,
-          requirementValue: requirement.value,
-          status: "pending",
-          message: "",
-        };
-
-        try {
-          if (!isRequirementSupported(requirement.type)) {
-            throw new Error(`Requirement type "${requirement.type}" is not supported yet.`);
-          }
-
-          const circuitKey = getCircuitKeyForRequirement(requirement.type);
-          const minValue = extractNumericValue(requirement.value);
-          const checkDef = getProofCheckByKey(circuitKey);
-          const candidates = getAttributeCandidatesForRequirement(requirement.type);
-
-          if (!circuitKey || !checkDef) {
-            throw new Error(`No circuit configured for "${requirement.type}".`);
-          }
-          if (minValue === null) {
-            throw new Error(`Could not extract numeric value from "${requirement.value}".`);
-          }
-
-          const attributeValue = extractAttributeFromSdJwt(candidates, parsed);
-          if (attributeValue === undefined) {
-            throw new Error(`Required attribute(s) [${candidates.join(", ")}] not found.`);
-          }
-
-          const input: Record<string, string | number> = {};
-          for (const field of checkDef.inputs) {
-            if (field.source === "computed") {
-              if (field.computedBy !== "utcPlus2CurrentDate") {
-                throw new Error(`Unsupported computed source for ${field.key}.`);
-              }
-              input[field.key] = normalizeYyyyMmDd(getUtcPlus2YyyyMmDd(), field.label);
-            } else if (field.source === "sd-jwt") {
-              input[field.key] = normalizeYyyyMmDd(attributeValue, field.label);
-            } else if (field.key === "minAge") {
-              input[field.key] = minValue;
-            }
-          }
-
-          if (circuitKey === "age") {
-            assertAgeRequirementSatisfied(
-              input.currentDate,
-              input.dobValue,
-              minValue,
-              requirement.value
-            );
-          }
-
-          result.status = "generating";
-          result.message = "Generating proof...";
-          result.minValue = minValue;
-          result.attributeValue = String(attributeValue);
-          results.push(result);
-          setRequirementChecks([...results]);
-
-          const baseUrl = resolveProofServiceUrl();
-          logProof(`Requesting proof from ${baseUrl}/proof/${circuitKey}/generate.`);
-          const response = await fetch(`${baseUrl}/proof/${circuitKey}/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(input),
-          });
-          const payload = (await response.json()) as ProofServiceResponse;
-
-          if (!response.ok || !payload.ok) {
-            throw new Error(payload.error || "Proof generation failed.");
-          }
-          if (!isProofCalldata(payload.calldata)) {
-            throw new Error("Proof service did not return Solidity proof calldata. Restart the updated proof service.");
-          }
-
-          const verifiedOnChain = await verifyEligibilityProofOnChain(payload.calldata);
-          if (!verifiedOnChain) {
-            throw new Error("Proof verification failed on the smart contract.");
-          }
-
-          result.status = "ok";
-          result.message = "Proof verified on contract";
-          result.inputPath = payload.inputPath;
-          setEligibilityProof(payload.calldata);
-        } catch (error) {
-          result.status = "failed";
-          result.message = error instanceof Error ? error.message : "Not ok";
-          logProof(`[${requirement.type}] ${result.message}`);
-        }
-
-        const index = results.findIndex((check) => check.requirementId === result.requirementId);
-        if (index >= 0) {
-          results[index] = result;
-        } else {
-          results.push(result);
-        }
-        setRequirementChecks([...results]);
+      const verifyResponse = await fetchWithTimeout(`${baseUrl}/proof/eligibility/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const verifyPayload = await verifyResponse.json();
+      if (!verifyResponse.ok) {
+        throw new Error(verifyPayload.error || "Verification request failed.");
+      }
+      if (!verifyPayload.ok) {
+        throw new Error("Proof verification failed locally.");
       }
 
-      const allPassed = results.length > 0 && results.every((result) => result.status === "ok");
-      setStep(allPassed ? "confirmed" : "error");
-      if (!allPassed) {
-        setErrorMessage("At least one eligibility proof check failed.");
+      const verifiedOnChain = await verifyEligibilityProofOnChain(payload.calldata);
+      if (!verifiedOnChain) {
+        throw new Error("Proof verification failed on the smart contract.");
       }
+
+      result.status = "ok";
+      result.message = "Proof verified on contract";
+      result.inputPath = payload.inputPath;
+      setRequirementChecks([result]);
+      setEligibilityProof(payload.calldata);
+      setStep("confirmed");
+      logProof("Eligibility proof verification succeeded.");
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unexpected eligibility error.");
+      const message = error instanceof Error ? error.message : "Unexpected eligibility error.";
+      setErrorMessage(message);
       setStep("error");
+      setRequirementChecks([
+        {
+          requirementId: String(electionId || "election"),
+          requirementType: "Eligibility",
+          requirementValue: "",
+          status: "failed",
+          message,
+        },
+      ]);
+      logProof(message);
     }
-  };
+  }, [electionId, logProof, requirements]);
 
-  const handleRegister = async () => {
-    if (!election) {
+  useEffect(() => {
+    const presentation = getFirstParam(params.presentation);
+    const errorCode = getFirstParam(params.errorCode);
+    const errorMessageFromWallet = getFirstParam(params.errorMessage);
+
+    if (errorCode) {
+      setStep("error");
+      setErrorMessage(errorMessageFromWallet || `Valera returned error: ${errorCode}`);
       return;
     }
+
+    if (!storedMetadata || !presentation || presentation === processedPresentationRef.current) {
+      return;
+    }
+
+    processedPresentationRef.current = presentation;
+    handleStartVerification(presentation, "Valera");
+  }, [
+    handleStartVerification,
+    params.errorCode,
+    params.errorMessage,
+    params.presentation,
+    storedMetadata,
+  ]);
+
+  const handleRegister = async () => {
+    if (!election) return;
     if (!eligibilityProof) {
       showAlert("Registration failed", "Generate and verify the eligibility proof first.");
       return;
@@ -377,19 +542,40 @@ export default function RegisterEligibilityScreen() {
       showAlert(
         result.registered ? "Registered" : "Registration submitted",
         `Election ${election.id}\nTx: ${result.txHash}`,
-        [{ text: "OK", onPress: () => router.replace("/(tabs)/explore") }]
+        [{ text: "OK", onPress: () => router.replace("/(tabs)/explore") }],
       );
     } catch (error) {
       showAlert(
         "Registration failed",
-        error instanceof Error ? error.message : "Unable to register for this election."
+        error instanceof Error ? error.message : "Unable to register for this election.",
       );
     } finally {
       setIsRegistering(false);
     }
   };
 
-  const title = storedMetadata?.metadata.title ?? (election ? `Election #${election.id}` : "Register");
+  const handleRetry = () => {
+    processedPresentationRef.current = null;
+    setErrorMessage("");
+    setEligibilityProof(null);
+    setRequirementChecks(
+      requirements.map((requirement) => ({
+        requirementId: requirement.id,
+        requirementType: requirement.type,
+        requirementValue: requirement.value,
+        status: "pending",
+        message: "",
+      })),
+    );
+
+    const presentation = getFirstParam(params.presentation);
+    if (presentation) {
+      handleStartVerification(presentation, "Valera");
+      return;
+    }
+
+    setStep("request-credential");
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -405,45 +591,68 @@ export default function RegisterEligibilityScreen() {
           <Text style={styles.eyebrow}>Registration</Text>
           <Text style={styles.title}>{title}</Text>
           <Text style={styles.description}>
-            Eligibility is checked before the ERC1155 registration token is minted.
+            Share a real credential from Valera, generate the eligibility proof, then register on-chain.
           </Text>
         </View>
 
-        {step === "loading" && (
+        {(step === "loading" || isPreparingReturnedPresentation) && (
           <View style={styles.centerCard}>
             <ActivityIndicator color={palette.primary} />
-            <Text style={styles.mutedText}>Loading registration data...</Text>
+            <Text style={styles.mutedText}>
+              {isPreparingReturnedPresentation ? "Preparing verification..." : "Loading registration data..."}
+            </Text>
           </View>
         )}
 
-        {step !== "loading" && requirements.length === 0 && (
+        {step === "request-credential" && !hasReturnedPresentation && (
           <View style={styles.section}>
-            <View style={styles.requirementCard}>
-              <Text style={styles.requirementType}>No eligibility requirements</Text>
-              <Text style={styles.requirementValue}>
-                The current contract requires a valid ZK proof before registration.
+            <Text style={styles.sectionTitle}>Identity Credential</Text>
+            {CREDENTIAL_TYPES.map((credential) => {
+              const claimsForCredential = getRequestedClaimsForCredential(credential.id, requirements);
+              const isSelected = selectedCredentialType === credential.id;
+
+              return (
+                <TouchableOpacity
+                  key={credential.id}
+                  style={[styles.credentialCard, isSelected && styles.credentialCardSelected]}
+                  onPress={() => setSelectedCredentialType(credential.id)}
+                >
+                  <View style={styles.credentialInfo}>
+                    <Text style={styles.credentialLabel}>{credential.label}</Text>
+                    <Text style={styles.credentialDescription}>
+                      {claimsForCredential.length > 0
+                        ? `Will request: ${claimsForCredential.join(", ")}`
+                        : "No matching claims for this survey"}
+                    </Text>
+                  </View>
+                  {isSelected && <Feather name="check" size={18} color={palette.primary} />}
+                </TouchableOpacity>
+              );
+            })}
+
+            {selectedCredentialConfig && requestedClaims.length > 0 && (
+              <View style={styles.claimsBox}>
+                <Text style={styles.claimsText}>
+                  {selectedCredentialConfig.label}: {requestedClaims.join(", ")}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {step === "waiting-wallet" && !hasReturnedPresentation && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Waiting for Valera</Text>
+            <View style={styles.waitingCard}>
+              <ActivityIndicator size="small" color={palette.primary} />
+              <Text style={styles.waitingText}>
+                Complete credential sharing in Valera. Proof generation will start when the wallet returns.
               </Text>
             </View>
           </View>
         )}
 
-        {step === "select-mock" && requirements.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Identity Credential</Text>
-            <View style={styles.pickerWrap}>
-              <Picker
-                selectedValue={selectedMockId}
-                onValueChange={(value) => setSelectedMockId(String(value))}
-              >
-                {SD_JWT_MOCK_TOKENS.map((mock) => (
-                  <Picker.Item key={mock.id} label={mock.label} value={mock.id} />
-                ))}
-              </Picker>
-            </View>
-          </View>
-        )}
-
-        {requirements.length > 0 && (
+        {requirements.length > 0 && !isPreparingReturnedPresentation && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Survey Requirements</Text>
             {requirements.map((requirement) => (
@@ -455,7 +664,18 @@ export default function RegisterEligibilityScreen() {
           </View>
         )}
 
-        {requirementChecks.length > 0 && step !== "select-mock" && step !== "loading" && (
+        {requirements.length === 0 && step !== "loading" && !isPreparingReturnedPresentation && (
+          <View style={styles.section}>
+            <View style={styles.requirementCard}>
+              <Text style={styles.requirementType}>Credential validity</Text>
+              <Text style={styles.requirementValue}>
+                No age rule is configured, but the contract still expects a valid eligibility proof.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {requirementChecks.length > 0 && step !== "request-credential" && step !== "waiting-wallet" && !isPreparingReturnedPresentation && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Verification Results</Text>
             {requirementChecks.map((check) => (
@@ -477,6 +697,11 @@ export default function RegisterEligibilityScreen() {
                   <View style={styles.resultInfo}>
                     <Text style={styles.resultType}>{check.requirementType}</Text>
                     <Text style={styles.resultMessage}>{check.message}</Text>
+                    {(check.currentDate || check.normalizedAttributeValue || check.minValue != null) && (
+                      <Text style={styles.resultDebugText}>
+                        currentDate={check.currentDate || "N/A"} dobValue={check.normalizedAttributeValue || "N/A"} minAge={check.minValue ?? "N/A"}
+                      </Text>
+                    )}
                   </View>
                 </View>
               </View>
@@ -493,17 +718,18 @@ export default function RegisterEligibilityScreen() {
       </ScrollView>
 
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
-        {step === "select-mock" && (
-          <TouchableOpacity
-            style={styles.primaryBtn}
-            onPress={handleStartVerification}
-            disabled={requirements.length > 0 && !selectedMock?.token}
-          >
-            <Text style={styles.primaryBtnText}>
-              {requirements.length > 0 ? "Verify Eligibility" : "Continue"}
-            </Text>
+        {step === "request-credential" && !hasReturnedPresentation && (
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleRequestCredential}>
+            <Text style={styles.primaryBtnText}>Request from Valera</Text>
             <Feather name="arrow-right" size={16} color={palette.white} />
           </TouchableOpacity>
+        )}
+
+        {step === "waiting-wallet" && !hasReturnedPresentation && (
+          <View style={styles.primaryBtn}>
+            <ActivityIndicator size="small" color={palette.white} />
+            <Text style={styles.primaryBtnText}>Waiting for Valera...</Text>
+          </View>
         )}
 
         {step === "generating" && (
@@ -533,20 +759,7 @@ export default function RegisterEligibilityScreen() {
         {step === "error" && (
           <TouchableOpacity
             style={[styles.primaryBtn, styles.primaryBtnRetry]}
-            onPress={() => {
-              setStep("select-mock");
-              setErrorMessage("");
-              setEligibilityProof(null);
-              setRequirementChecks(
-                requirements.map((requirement) => ({
-                  requirementId: requirement.id,
-                  requirementType: requirement.type,
-                  requirementValue: requirement.value,
-                  status: "pending",
-                  message: "",
-                }))
-              );
-            }}
+            onPress={handleRetry}
           >
             <Feather name="refresh-cw" size={16} color={palette.white} />
             <Text style={styles.primaryBtnText}>Try Again</Text>
@@ -633,12 +846,62 @@ const styles = StyleSheet.create({
     color: palette.textPrimary,
     marginBottom: 8,
   },
-  pickerWrap: {
+  credentialCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     borderWidth: 1,
     borderColor: palette.border,
     borderRadius: 8,
-    overflow: "hidden",
+    padding: 12,
+    marginBottom: 12,
     backgroundColor: palette.white,
+  },
+  credentialCardSelected: {
+    borderColor: palette.primary,
+    backgroundColor: palette.primaryNegative,
+  },
+  credentialInfo: {
+    flex: 1,
+  },
+  credentialLabel: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: palette.textPrimary,
+  },
+  credentialDescription: {
+    fontSize: 12,
+    color: palette.textSecondary,
+    marginTop: 4,
+    lineHeight: 17,
+  },
+  claimsBox: {
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: palette.surfaceMuted,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  claimsText: {
+    fontSize: 12,
+    color: palette.textSecondary,
+    lineHeight: 18,
+  },
+  waitingCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: palette.white,
+    borderWidth: 1,
+    borderColor: palette.border,
+  },
+  waitingText: {
+    flex: 1,
+    fontSize: 13,
+    color: palette.textSecondary,
+    lineHeight: 19,
   },
   requirementCard: {
     padding: 12,
@@ -696,6 +959,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: palette.textSecondary,
     marginTop: 4,
+  },
+  resultDebugText: {
+    fontSize: 10,
+    color: palette.textSecondary,
+    fontFamily: "monospace",
+    marginTop: 6,
+    lineHeight: 15,
   },
   errorBox: {
     flexDirection: "row",

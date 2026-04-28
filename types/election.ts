@@ -66,7 +66,7 @@ export type Groth16ProofCalldata = {
   pi_a: [Uint256Like, Uint256Like];
   pi_b: [[Uint256Like, Uint256Like], [Uint256Like, Uint256Like]];
   pi_c: [Uint256Like, Uint256Like];
-  pubInputs: [Uint256Like, Uint256Like];
+  pubInputs: Uint256Like[];
 };
 
 export type CreateElectionOnChainInput = SurveyDraft;
