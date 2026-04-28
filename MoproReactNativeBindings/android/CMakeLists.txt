@@ -7,13 +7,17 @@ set (CMAKE_CXX_STANDARD 17)
 
 # Resolve the path to the uniffi-bindgen-react-native package
 execute_process(
-    COMMAND node -p "require.resolve('uniffi-bindgen-react-native/package.json')"
+    COMMAND node -e "const path = require('path'); process.stdout.write(path.dirname(require.resolve('uniffi-bindgen-react-native/package.json', { paths: [process.cwd()] })))"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     OUTPUT_VARIABLE UNIFFI_BINDGEN_PATH
+    RESULT_VARIABLE UNIFFI_BINDGEN_RESULT
+    ERROR_VARIABLE UNIFFI_BINDGEN_ERROR
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-# Get the directory; get_filename_component and cmake_path will normalize
-# paths with Windows path separators.
-get_filename_component(UNIFFI_BINDGEN_PATH "${UNIFFI_BINDGEN_PATH}" DIRECTORY)
+
+if (NOT UNIFFI_BINDGEN_RESULT EQUAL 0)
+    message(FATAL_ERROR "Unable to resolve uniffi-bindgen-react-native. Run npm install from the project root. ${UNIFFI_BINDGEN_ERROR}")
+endif()
 
 # Specifies a path to native header files.
 include_directories(
