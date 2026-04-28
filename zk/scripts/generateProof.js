@@ -1,14 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { ageBuildDir, ensureDirectory } = require('./common');
+const { eligibilityBuildDir, ensureDirectory } = require('./common');
 const { resolveWitnessPaths } = require('./generateWitness');
-const { ageCircuit } = require('../config');
+const { eligibilityCircuit } = require('../config');
 
 async function generateProof() {
-  const proofPath = path.join(ageBuildDir, ageCircuit.proofFile);
-  const publicSignalsPath = path.join(ageBuildDir, ageCircuit.publicSignalsFile);
-  const zkeyPath = path.join(ageBuildDir, ageCircuit.zkeyFile);
+  const proofPath = path.join(eligibilityBuildDir, eligibilityCircuit.proofFile);
+  const publicSignalsPath = path.join(eligibilityBuildDir, eligibilityCircuit.publicSignalsFile);
+  const zkeyPath = path.join(eligibilityBuildDir, eligibilityCircuit.zkeyFile);
   const { witnessPath } = resolveWitnessPaths();
 
   if (!fs.existsSync(zkeyPath)) {

@@ -1,38 +1,17 @@
 const path = require('path');
-const fs = require('fs');
-const snarkjs = require('snarkjs');
-const { buildAgeInputToFile } = require('./buildAgeInput');
+const { buildEligibilityInputToFile } = require('./buildAgeInput');
 const { generateWitness } = require('./generateWitness');
 const { generateProof } = require('./generateProof');
 const { verifyProof } = require('./verifyProof');
-const { ageBuildDir, getTimestampedInputPath } = require('./common');
-const { ageCircuit } = require('../config');
+const { getSurveyInputPath, getTimestampYyyyMmDd } = require('./common');
 
-async function readAgeProofArtifacts() {
-  const proofPath = path.join(ageBuildDir, ageCircuit.proofFile);
-  const publicSignalsPath = path.join(ageBuildDir, ageCircuit.publicSignalsFile);
-  const proof = JSON.parse(await fs.promises.readFile(proofPath, 'utf8'));
-  const publicSignals = JSON.parse(await fs.promises.readFile(publicSignalsPath, 'utf8'));
-  const rawCalldata = await snarkjs.groth16.exportSolidityCallData(proof, publicSignals);
-  const parsed = JSON.parse(`[${rawCalldata}]`);
+async function generateEligibilityProofArtifacts({ input, surveyId }) {
+  const currentDate = String(input?.currentDate ?? getTimestampYyyyMmDd()).trim();
+  const outputPath = getSurveyInputPath(surveyId, currentDate);
+  const { surveyId: _ignoredSurveyId, ...circuitInput } = input || {};
 
-  return {
-    proof,
-    publicSignals,
-    calldata: {
-      pi_a: parsed[0],
-      pi_b: parsed[1],
-      pi_c: parsed[2],
-      pubInputs: parsed[3],
-    },
-  };
-}
-
-async function generateAgeProofArtifacts({ currentDate, dobValue, minAge }) {
-  const outputPath = getTimestampedInputPath();
-
-  const { input } = buildAgeInputToFile(
-    { currentDate, dobValue, minAge },
+  const { input: writtenInput } = buildEligibilityInputToFile(
+    circuitInput,
     outputPath,
   );
 
@@ -43,12 +22,11 @@ async function generateAgeProofArtifacts({ currentDate, dobValue, minAge }) {
   return {
     ok: true,
     inputPath: path.relative(process.cwd(), outputPath),
-    input,
-    ...artifacts,
+    input: writtenInput,
   };
 }
 
-async function verifyGeneratedAgeProof() {
+async function verifyGeneratedEligibilityProof() {
   const isValid = await verifyProof();
 
   return {
@@ -56,9 +34,9 @@ async function verifyGeneratedAgeProof() {
   };
 }
 
-async function runAgeProofFlow({ currentDate, dobValue, minAge }) {
-  const generated = await generateAgeProofArtifacts({ currentDate, dobValue, minAge });
-  const verified = await verifyGeneratedAgeProof();
+async function runEligibilityProofFlow({ input, surveyId }) {
+  const generated = await generateEligibilityProofArtifacts({ input, surveyId });
+  const verified = await verifyGeneratedEligibilityProof();
 
   return {
     ...generated,
@@ -67,11 +45,10 @@ async function runAgeProofFlow({ currentDate, dobValue, minAge }) {
 }
 
 if (require.main === module) {
-  const currentDate = process.argv[2];
-  const dobValue = process.argv[3];
-  const minAge = process.argv[4];
+  const input = process.argv[2] ? JSON.parse(process.argv[2]) : {};
+  const surveyId = process.argv[3];
 
-  runAgeProofFlow({ currentDate, dobValue, minAge })
+  runEligibilityProofFlow({ input, surveyId })
     .then((result) => {
       console.log(JSON.stringify(result, null, 2));
     })
@@ -82,8 +59,10 @@ if (require.main === module) {
 }
 
 module.exports = {
-  runAgeProofFlow,
-  generateAgeProofArtifacts,
-  verifyGeneratedAgeProof,
-  readAgeProofArtifacts,
+  runEligibilityProofFlow,
+  generateEligibilityProofArtifacts,
+  verifyGeneratedEligibilityProof,
+  runAgeProofFlow: runEligibilityProofFlow,
+  generateAgeProofArtifacts: generateEligibilityProofArtifacts,
+  verifyGeneratedAgeProof: verifyGeneratedEligibilityProof,
 };

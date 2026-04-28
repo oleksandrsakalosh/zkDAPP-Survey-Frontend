@@ -1,19 +1,19 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { ageBuildDir, ageInputPath, ensureDirectory } = require('./common');
-const { ageCircuit } = require('../config');
+const { eligibilityBuildDir, eligibilityInputPath, ensureDirectory } = require('./common');
+const { eligibilityCircuit } = require('../config');
 
-function resolveWitnessPaths(inputPath = ageInputPath) {
+function resolveWitnessPaths(inputPath = eligibilityInputPath) {
   return {
-    witnessPath: path.join(ageBuildDir, ageCircuit.witnessFile),
-    wasmPath: path.join(ageBuildDir, ageCircuit.wasmDirectory, ageCircuit.wasmFile),
+    witnessPath: path.join(eligibilityBuildDir, eligibilityCircuit.witnessFile),
+    wasmPath: path.join(eligibilityBuildDir, eligibilityCircuit.wasmDirectory, eligibilityCircuit.wasmFile),
     inputPath,
-    witnessCalculatorPath: path.join(ageBuildDir, ageCircuit.wasmDirectory, ageCircuit.witnessCalculatorFile),
+    witnessCalculatorPath: path.join(eligibilityBuildDir, eligibilityCircuit.wasmDirectory, eligibilityCircuit.witnessCalculatorFile),
   };
 }
 
-async function generateWitness(inputPath = ageInputPath) {
+async function generateWitness(inputPath = eligibilityInputPath) {
   const { witnessPath, wasmPath, witnessCalculatorPath } = resolveWitnessPaths(inputPath);
 
   if (!fs.existsSync(wasmPath)) {
@@ -42,7 +42,7 @@ async function generateWitness(inputPath = ageInputPath) {
 }
 
 if (require.main === module) {
-  const inputPath = process.argv[2] || ageInputPath;
+  const inputPath = process.argv[2] || eligibilityInputPath;
   generateWitness(inputPath).catch((error) => {
     console.error(error.message);
     process.exit(1);

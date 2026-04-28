@@ -19,9 +19,9 @@ export interface ProofCheckDefinition {
 // Mirrors zk/config.js check metadata so UI can render dynamic inputs.
 export const PROOF_CHECKS: ProofCheckDefinition[] = [
   {
-    key: 'age',
-    label: 'Age Check',
-    description: 'Prove age threshold based on birth date disclosure.',
+    key: 'eligibility',
+    label: 'Eligibility Check',
+    description: 'Prove eligibility with SD-JWT disclosures.',
     inputs: [
       {
         key: 'currentDate',
@@ -31,16 +31,15 @@ export const PROOF_CHECKS: ProofCheckDefinition[] = [
         computedBy: 'utcPlus2CurrentDate',
       },
       {
-        key: 'dobValue',
-        source: 'sd-jwt',
-        label: 'Birth date',
-        format: 'yyyymmdd',
-        sdJwtAttributeKeys: ['birth_date', 'date_of_birth', 'dob', 'dobValue'],
-      },
-      {
         key: 'minAge',
         source: 'user',
         label: 'Minimum age',
+        format: 'nonNegativeInteger',
+      },
+      {
+        key: 'enableAgeCheck',
+        source: 'user',
+        label: 'Enable age check',
         format: 'nonNegativeInteger',
       },
     ],
