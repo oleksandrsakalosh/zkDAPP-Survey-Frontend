@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import CreatedSurveyCard from "@/components/createdSurveyCard";
@@ -15,6 +15,7 @@ type Props = {
     canQuickVoteTest?: boolean;
     isQuickVoting?: boolean;
     isRefreshing?: boolean;
+    isLoading?: boolean;
     onRefresh?: () => void;
     onManage: (id: string) => void;
     onEdit: (id: string) => void;
@@ -30,6 +31,7 @@ export default function CreatedSurveys({
     canQuickVoteTest = false,
     isQuickVoting = false,
     isRefreshing = false,
+    isLoading = false,
     onRefresh,
     onManage,
     onEdit,
@@ -69,7 +71,13 @@ export default function CreatedSurveys({
 
     return (
         <View style={styles.container}>
-            <FlatList
+            {isLoading ? (
+                <View style={styles.loadingState}>
+                    <ActivityIndicator color={palette.primary} />
+                    <Text style={styles.emptyText}>Loading your contract surveys...</Text>
+                </View>
+            ) : (
+                <FlatList
                 data={listData}
                 keyExtractor={(item, idx) =>
                     item.type === "card" ? `card-${item.survey.id}` : `header-${idx}`
@@ -105,7 +113,8 @@ export default function CreatedSurveys({
                         </Text>
                     </View>
                 }
-            />
+                />
+            )}
 
             <View style={styles.stickyWrap}>
                 <Pressable
@@ -216,6 +225,13 @@ const styles = StyleSheet.create({
         fontSize: 14,
         textAlign: "center",
         lineHeight: 20,
+    },
+    loadingState: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        paddingHorizontal: 16,
     },
     stickyWrap: {
         position: "absolute",

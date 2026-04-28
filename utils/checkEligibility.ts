@@ -62,7 +62,7 @@ export function checkEligibility(
     }
 
     return {
-        decision: failed.length === 0 ? "qualify" : "disqualify",
+        decision: failed.length === 0 ? "qualify" : "not_qualified",
         matchedRequirements: matched,
         failedRequirements: failed,
         checkedAt: new Date().toISOString(),

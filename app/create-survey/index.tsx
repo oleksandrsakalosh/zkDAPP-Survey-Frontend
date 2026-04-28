@@ -30,6 +30,67 @@ const formatDate = (d: Date) =>
       minute: "2-digit",
   });
 
+const toWebDateTimeValue = (date: Date | null) => {
+  if (!date) {
+    return "";
+  }
+
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
+    date.getHours()
+  )}:${pad(date.getMinutes())}`;
+};
+
+const parseWebDateTimeValue = (value: string) => {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+type WebDateTimeInputProps = {
+  value: Date | null;
+  minimumDate?: Date | null;
+  placeholder: string;
+  hasError: boolean;
+  onChange: (date: Date | null) => void;
+};
+
+function WebDateTimeInput({
+  value,
+  minimumDate,
+  placeholder,
+  hasError,
+  onChange,
+}: WebDateTimeInputProps) {
+  return React.createElement("input", {
+    type: "datetime-local",
+    value: toWebDateTimeValue(value),
+    min: toWebDateTimeValue(minimumDate ?? null) || undefined,
+    "aria-label": placeholder,
+    onChange: (event: { target: { value: string } }) =>
+      onChange(parseWebDateTimeValue(event.target.value)),
+    style: {
+      flex: 1,
+      height: 54,
+      minWidth: 0,
+      borderWidth: hasError ? 1.5 : 1,
+      borderStyle: "solid",
+      borderColor: hasError ? "#EF4444" : "#E5E7EB",
+      borderRadius: 14,
+      paddingLeft: 14,
+      paddingRight: 14,
+      fontSize: 16,
+      color: value ? "#111827" : "#9CA3AF",
+      backgroundColor: hasError ? "#FEF2F2" : palette.white,
+      outline: "none",
+      fontFamily: "inherit",
+    },
+  });
+}
+
 export default function CreateSurvey() {
   const { draft, setDraft } = useSurveyDraft();
 
@@ -79,7 +140,7 @@ export default function CreateSurvey() {
   // Validation
   const nameOk = surveyName.trim().length > 0;
   const descOk = description.trim().length > 0;
-  const durationOk = Platform.OS === "web" ? true : !!startDate && !!endDate;
+  const durationOk = !!startDate && !!endDate;
   const isValid = nameOk && descOk && durationOk;
 
   const nameError = touched.name && !nameOk;
@@ -90,7 +151,7 @@ export default function CreateSurvey() {
     setTouched({
       name: true,
       description: true,
-      duration: Platform.OS === "web" ? false : true,
+      duration: true,
     });
   
     if (!isValid) return;
@@ -221,37 +282,63 @@ export default function CreateSurvey() {
           {/* Duration */}
           <Text style={[styles.label, { marginTop: 16 }]}>Duration</Text>
 
-          <View style={styles.row}>
-            <Pressable
-              onPress={() => {
-                setTouched((p) => ({ ...p, duration: true }));
-                openPicker("start");
-              }}
-              style={[styles.dateBox, durationError && styles.inputError]}
-            >
-              <Text style={[styles.dateText, startDate ? styles.dateValue : styles.datePlaceholder]}>
-                {startDate ? formatDate(startDate) : "Start"}
-              </Text>
-              <View style={styles.dateIconWrap}>
-                <Ionicons name="calendar-outline" size={18} color="#111827" />
-              </View>
-            </Pressable>
+          {Platform.OS === "web" ? (
+            <View style={styles.row}>
+              <WebDateTimeInput
+                value={startDate}
+                placeholder="Start"
+                hasError={durationError}
+                onChange={(date) => {
+                  setTouched((p) => ({ ...p, duration: true }));
+                  setStart(date);
+                  if (date && endDate && endDate < date) setEnd(date);
+                }}
+              />
+              <WebDateTimeInput
+                value={endDate}
+                minimumDate={startDate}
+                placeholder="End"
+                hasError={durationError}
+                onChange={(date) => {
+                  setTouched((p) => ({ ...p, duration: true }));
+                  if (date && startDate && date < startDate) setEnd(startDate);
+                  else setEnd(date);
+                }}
+              />
+            </View>
+          ) : (
+            <View style={styles.row}>
+              <Pressable
+                onPress={() => {
+                  setTouched((p) => ({ ...p, duration: true }));
+                  openPicker("start");
+                }}
+                style={[styles.dateBox, durationError && styles.inputError]}
+              >
+                <Text style={[styles.dateText, startDate ? styles.dateValue : styles.datePlaceholder]}>
+                  {startDate ? formatDate(startDate) : "Start"}
+                </Text>
+                <View style={styles.dateIconWrap}>
+                  <Ionicons name="calendar-outline" size={18} color="#111827" />
+                </View>
+              </Pressable>
 
-            <Pressable
-              onPress={() => {
-                setTouched((p) => ({ ...p, duration: true }));
-                openPicker("end");
-              }}
-              style={[styles.dateBox, durationError && styles.inputError]}
-            >
-              <Text style={[styles.dateText, endDate ? styles.dateValue : styles.datePlaceholder]}>
-                {endDate ? formatDate(endDate) : "End"}
-              </Text>
-              <View style={styles.dateIconWrap}>
-                <Ionicons name="calendar-outline" size={18} color="#111827" />
-              </View>
-            </Pressable>
-          </View>
+              <Pressable
+                onPress={() => {
+                  setTouched((p) => ({ ...p, duration: true }));
+                  openPicker("end");
+                }}
+                style={[styles.dateBox, durationError && styles.inputError]}
+              >
+                <Text style={[styles.dateText, endDate ? styles.dateValue : styles.datePlaceholder]}>
+                  {endDate ? formatDate(endDate) : "End"}
+                </Text>
+                <View style={styles.dateIconWrap}>
+                  <Ionicons name="calendar-outline" size={18} color="#111827" />
+                </View>
+              </Pressable>
+            </View>
+          )}
 
           {durationError && <Text style={styles.errorText}>Select start and end dates</Text>}
 

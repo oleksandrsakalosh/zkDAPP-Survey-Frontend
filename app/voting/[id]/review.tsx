@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useState } from "react";
 import {
+  ActivityIndicator,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +14,8 @@ import Feather from "@expo/vector-icons/Feather";
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
+import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
+import { showAlert } from "@/utils/platformAlert";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -20,6 +23,7 @@ export default function ReviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { state } = useVoting();
   const insets = useSafeAreaInsets();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const questions = state.survey?.questions ?? [];
   const answers = state.answers;
@@ -44,9 +48,63 @@ export default function ReviewScreen() {
     if (!q) return false;
     return a.selectedOptions.length > 0;
   }).length;
+  const requiredQuestionsAnswered = questions.every((question) => {
+    if (!question.isRequired) {
+      return true;
+    }
 
-  const handleSubmit = () => {
-    router.push(`/voting/${id}/success` as any);
+    const answer = answers.find((item) => item.questionId === question.id);
+    return (answer?.selectedOptions ?? []).length > 0;
+  });
+  const canSubmit = questions.length > 0 && requiredQuestionsAnswered && !isSubmitting;
+
+  const buildVoteChoices = () => {
+    return questions.flatMap((question) => {
+      const answer = answers.find((item) => item.questionId === question.id);
+      const selectedOptions = answer?.selectedOptions ?? [];
+
+      if (question.isRequired && selectedOptions.length === 0) {
+        throw new Error(`Question "${question.title}" has not been answered.`);
+      }
+
+      return selectedOptions.map((optionId) => {
+        const optionIndex = (question.options ?? []).findIndex((option) => option.id === optionId);
+        if (optionIndex < 0) {
+          throw new Error(`Selected answer for "${question.title}" is no longer available.`);
+        }
+
+        return optionIndex;
+      });
+    });
+  };
+
+  const handleSubmit = async () => {
+    if (!id || isSubmitting) {
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      const choices = buildVoteChoices();
+      if (choices.length === 0) {
+        throw new Error("No vote choices selected.");
+      }
+
+      const result = await voteSurvey(id, choices);
+      console.log("[ReviewScreen] vote submitted", {
+        electionId: id,
+        voteId: result.voteId,
+        alreadyVoted: result.alreadyVoted,
+      });
+      router.replace(`/voting/${id}/success` as any);
+    } catch (error) {
+      showAlert(
+        "Vote failed",
+        error instanceof Error ? error.message : "Unable to submit your vote to Vocdoni."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -121,9 +179,19 @@ export default function ReviewScreen() {
 
       {/* ── Action Bar ── */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
-        <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit}>
-          <Text style={styles.submitBtnText}>Confirm & Submit</Text>
-          <Feather name="check" size={16} color={palette.white} />
+        <TouchableOpacity
+          style={[styles.submitBtn, !canSubmit && styles.submitBtnDisabled]}
+          onPress={handleSubmit}
+          disabled={!canSubmit}
+        >
+          {isSubmitting ? (
+            <ActivityIndicator size="small" color={palette.white} />
+          ) : (
+            <Feather name="check" size={16} color={palette.white} />
+          )}
+          <Text style={styles.submitBtnText}>
+            {isSubmitting ? "Submitting..." : "Confirm & Submit"}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -307,6 +375,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+  },
+  submitBtnDisabled: {
+    opacity: 0.45,
   },
   submitBtnText: {
     color: palette.white,

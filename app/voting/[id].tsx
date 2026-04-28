@@ -11,9 +11,16 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { SurveyDetail } from "@/domain/models";
+import { SurveyDetail, SurveyQuestion } from "@/domain/models";
+import {
+  getStartedElections,
+  isUserRegistered,
+} from "@/services/contractService";
 import { palette } from "@/theme/palette";
-import { loadRegisteredSurveyDetail } from "@/utils/registry/feed";
+import { ContractElectionStatus, ChainElection } from "@/types/election";
+import { loadOrFetchElectionMetadata } from "@/utils/electionMetadataStore";
+import { createVocdoniClient } from "@/utils/vocdoni/sdk";
+import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
 import { useVoting } from "@/utils/VotingContext";
 
 const CAT_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -22,6 +29,103 @@ const CAT_COLORS: Record<string, { bg: string; text: string; border: string }> =
   Tech: { bg: palette.primaryNegative, text: palette.primary, border: palette.primary },
   Productivity: { bg: palette.surfaceMuted, text: palette.textSecondary, border: palette.border },
   Lifestyle: { bg: palette.orangeLight, text: palette.orange, border: palette.orange },
+};
+
+const categoryFor = (label: string) => ({
+  id: label.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "on-chain",
+  label,
+});
+
+const isExpired = (election: ChainElection) => {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  return election.endDate > 0 && election.endDate <= nowSeconds;
+};
+
+const loadContractSurveyDetail = async (vocdoniElectionId: string): Promise<SurveyDetail | null> => {
+  const startedElections = await getStartedElections();
+  const election = startedElections.find(
+    (candidate) =>
+      candidate.status === ContractElectionStatus.Started &&
+      candidate.vocdoniElectionId === vocdoniElectionId
+  );
+
+  if (!election) {
+    return null;
+  }
+
+  if (isExpired(election)) {
+    throw new Error("This contract survey has already ended.");
+  }
+
+  const wallet = await getOrCreateDeviceWallet();
+  const registered = await isUserRegistered(election.id, wallet.address);
+  if (!registered) {
+    throw new Error("This wallet is not registered for the contract survey.");
+  }
+
+  const stored = await loadOrFetchElectionMetadata({
+    electionId: election.id,
+    metadataURI: election.metadataURI,
+    metadataHash: election.metadataHash,
+    eligibilityHash: election.eligibilityHash,
+  });
+
+  const metadata = stored?.metadata;
+  const eligibility = stored?.eligibility;
+  const category = categoryFor(metadata?.category || "On-chain");
+  const questions: SurveyQuestion[] = metadata?.questions ?? [];
+  const client = await createVocdoniClient(wallet);
+  client.setElectionId(vocdoniElectionId);
+  const voteId = await client.hasAlreadyVoted().catch(() => null);
+  const endDateIso =
+    metadata?.endDate ??
+    (election.endDate > 0 ? new Date(election.endDate * 1000).toISOString() : undefined);
+  const startsAtIso =
+    metadata?.startDate ??
+    (election.startDate > 0 ? new Date(election.startDate * 1000).toISOString() : undefined);
+
+  return {
+    id: vocdoniElectionId,
+    title: metadata?.title || `On-chain survey #${election.id}`,
+    description:
+      metadata?.description ||
+      "Contract-backed Vocdoni survey using the ERC1155 eligibility token census.",
+    status: "active",
+    categories: [category],
+    tags:
+      metadata?.tags.map((tag) => categoryFor(tag)) ??
+      [category],
+    estimatedMinutes: Math.max(1, questions.length || 1),
+    progress: {
+      responseCount: election.registeredVoters,
+      targetResponses: election.maxVoters || election.registeredVoters,
+    },
+    budget: {
+      rewardPerVoter: {
+        amount: metadata?.rewardPerVoter ?? 0,
+        currency: "TOKEN",
+      },
+    },
+    eligibility: {
+      decision: voteId ? "already_voted" : "qualify",
+      matchedRequirements: [],
+      failedRequirements: [],
+      checkedAt: new Date().toISOString(),
+    },
+    requirements: eligibility?.requirements ?? [],
+    questions,
+    timeInfo: {
+      opensAt: startsAtIso,
+      closesAt: endDateIso,
+      isOpen: true,
+      displayLabel: [
+        startsAtIso ? `Started ${new Date(startsAtIso).toLocaleString()}` : null,
+        endDateIso ? `Ends ${new Date(endDateIso).toLocaleString()}` : null,
+      ].filter(Boolean).join(" - ") || "Started on Vocdoni",
+    },
+    canParticipate: !voteId,
+    hasVoted: Boolean(voteId),
+  };
 };
 
 export default function SurveyDetailsScreen() {
@@ -45,17 +149,15 @@ export default function SurveyDetailsScreen() {
           throw new Error("Missing survey id.");
         }
 
-        const registryItem = await loadRegisteredSurveyDetail(id);
+        const detail = await loadContractSurveyDetail(id);
 
-        if (!registryItem) {
-          throw new Error("Survey not found in the public registry.");
+        if (!detail) {
+          throw new Error("Survey not found in started smart-contract surveys.");
         }
 
-        if (!isMounted) {
-          return;
+        if (isMounted) {
+          setLoadedSurvey(detail);
         }
-
-        setLoadedSurvey(registryItem.detail);
       } catch (error) {
         if (!isMounted) {
           return;
@@ -104,8 +206,7 @@ export default function SurveyDetailsScreen() {
 
   const handleStart = () => {
     setSurvey(survey);
-    const hasRequirements = Array.isArray(survey.requirements) && survey.requirements.length > 0;
-    router.push((hasRequirements ? `/voting/${id}/eligibility` : `/voting/${id}/questions`) as any);
+    router.push(`/voting/${id}/questions` as any);
   };
 
   const questionCount = survey.questions?.length ?? 0;
