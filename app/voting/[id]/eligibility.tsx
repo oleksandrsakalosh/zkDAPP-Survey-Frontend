@@ -207,7 +207,7 @@ export default function EligibilityScreen() {
   };
 
   const handleProceed = () => {
-    router.push(`/voting/${id}/questions` as any);
+    router.replace(`/voting/${id}/questions` as any);
   };
 
   return (
@@ -223,22 +223,20 @@ export default function EligibilityScreen() {
       {/* ── Main Content ── */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Step 1: Select Mock SD-JWT */}
-        {(step === "select-mock") && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Step 1: Select Identity Credential</Text>
+        <View style={[styles.section, step !== "select-mock" && { display: "none" }]}>
+          <Text style={styles.sectionTitle}>Step 1: Select Identity Credential</Text>
 
-            <View style={styles.pickerWrap}>
-              <Picker
-                selectedValue={selectedMockId}
-                onValueChange={(value) => setSelectedMockId(String(value))}
-              >
-                {SD_JWT_MOCK_TOKENS.map((mock) => (
-                  <Picker.Item key={mock.id} label={mock.label} value={mock.id} />
-                ))}
-              </Picker>
-            </View>
+          <View style={styles.pickerWrap}>
+            <Picker
+              selectedValue={selectedMockId}
+              onValueChange={(value) => setSelectedMockId(String(value))}
+            >
+              {SD_JWT_MOCK_TOKENS.map((mock) => (
+                <Picker.Item key={mock.id} label={mock.label} value={mock.id} />
+              ))}
+            </Picker>
           </View>
-        )}
+        </View>
 
         {/* Step 2: Survey Requirements */}
         {requirements.length > 0 && (
