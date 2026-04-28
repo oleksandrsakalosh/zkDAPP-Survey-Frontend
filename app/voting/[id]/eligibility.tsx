@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,12 +12,11 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Feather from "@expo/vector-icons/Feather";
-import Constants from "expo-constants";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
-import { buildEligibilityCircuitInputFromToken } from "@/utils/sdjwt/eligibilityInput";
+import { buildEligibilityCircuitInputFromToken, EligibilityCircuitInput } from "@/utils/sdjwt/eligibilityInput";
 import {
   CREDENTIAL_TYPES,
   CredentialType,
@@ -72,48 +70,34 @@ function normalizeYyyyMmDd(value: unknown, label: string): string {
   throw new Error(`${label} must be a date like yyyymmdd, yyyy-mm-dd, or dd.mm.yyyy.`);
 }
 
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs = 20_000,
-): Promise<Response> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, {
-      ...options,
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`Proof service request timed out after ${timeoutMs / 1000}s.`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
+async function getZkeyPath(): Promise<string> {
+  const RNFS = (await import("react-native-fs")).default;
+  const filename = "eligibility.zkey";
+  const destPath = RNFS.DocumentDirectoryPath + "/" + filename;
+  if (!(await RNFS.exists(destPath))) {
+    await RNFS.copyFileAssets("custom/" + filename, destPath);
   }
+  return destPath;
 }
 
-function resolveProofServiceUrl(): string {
-  const fromEnv = process.env.EXPO_PUBLIC_PROOF_SERVICE_URL;
-  if (fromEnv && fromEnv.trim()) {
-    return fromEnv.trim();
-  }
-
-  if (Platform.OS === "android") {
-    return "http://10.0.2.2:8787";
-  }
-
-  const hostUri = Constants.expoConfig?.hostUri;
-  if (hostUri) {
-    const host = hostUri.split(":")[0];
-    if (host) {
-      return `http://${host}:8787`;
-    }
-  }
-
-  return "http://localhost:8787";
+function toMoproInputs(input: EligibilityCircuitInput): Record<string, string[]> {
+  return {
+    pubKey: [...input.pubKey],
+    signatureR8: [...input.signatureR8],
+    signatureS: [input.signatureS],
+    merkleRoot: [input.merkleRoot],
+    leaves: [...input.leaves],
+    numLeaves: [input.numLeaves],
+    dobSalt: [input.dobSalt],
+    dobKey: [input.dobKey],
+    dobValue: [input.dobValue],
+    expSalt: [input.expSalt],
+    expKey: [input.expKey],
+    expValue: [input.expValue],
+    currentDate: [input.currentDate],
+    minAge: [input.minAge],
+    enableAgeCheck: [input.enableAgeCheck],
+  };
 }
 
 function fnv1aHex(input: string): string {
@@ -381,7 +365,7 @@ export default function EligibilityScreen() {
       });
       const normalizedDobValue = normalizeYyyyMmDd(proofInput.dobValue, "Birth date");
       const normalizedExpValue = normalizeYyyyMmDd(proofInput.expValue, "Expiry date");
-      const finalProofInput = {
+      const finalProofInput: EligibilityCircuitInput = {
         ...proofInput,
         dobValue: normalizedDobValue,
         expValue: normalizedExpValue,
@@ -402,42 +386,25 @@ export default function EligibilityScreen() {
 
       setRequirementChecks([result]);
       logProof(`Prepared eligibility proof for survey ${surveyId}. enableAgeCheck=${eligibilitySettings.enableAgeCheck}, minAge=${eligibilitySettings.minAge}`);
-      console.log("[Eligibility] Proof input:", JSON.stringify(finalProofInput, null, 2));
 
-      const baseUrl = resolveProofServiceUrl();
-      const response = await fetchWithTimeout(`${baseUrl}/proof/eligibility/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...finalProofInput,
-          surveyId,
-        }),
-      });
+      const zkeyPath = await getZkeyPath();
+      logProof(`Using zkey at: ${zkeyPath}`);
 
-      const payload = await response.json();
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Proof generation failed.");
-      }
+      const { generateCircomProof, verifyCircomProof, ProofLib } = await import("mopro-ffi");
+      const proofResult = generateCircomProof(
+        zkeyPath,
+        JSON.stringify(toMoproInputs(finalProofInput)),
+        ProofLib.Arkworks,
+      );
+      logProof("Proof generated. Verifying...");
 
-      logProof(`Eligibility proof generation succeeded. inputPath=${payload.inputPath}`);
-
-      const verifyResponse = await fetchWithTimeout(`${baseUrl}/proof/eligibility/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const verifyPayload = await verifyResponse.json();
-      if (!verifyResponse.ok) {
-        throw new Error(verifyPayload.error || "Verification request failed.");
-      }
-
-      if (!verifyPayload.ok) {
+      const isValid = verifyCircomProof(zkeyPath, proofResult, ProofLib.Arkworks);
+      if (!isValid) {
         throw new Error("Proof verification failed.");
       }
 
       result.status = "ok";
       result.message = "Proof generation OK";
-      result.inputPath = String(payload.inputPath ?? "");
       setRequirementChecks([result]);
       setStep("confirmed");
       logProof("Eligibility proof verification succeeded.");
@@ -459,7 +426,7 @@ export default function EligibilityScreen() {
   }, [id, logProof, requirements, survey]);
 
   const handleProceed = () => {
-    router.push(`/voting/${id}/questions` as any);
+    router.replace(`/voting/${id}/questions` as any);
   };
 
   useEffect(() => {

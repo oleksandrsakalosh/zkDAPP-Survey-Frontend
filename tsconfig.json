@@ -6,6 +6,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "mopro-ffi": [
+        "./MoproReactNativeBindings/src/index.tsx"
       ]
     }
   },

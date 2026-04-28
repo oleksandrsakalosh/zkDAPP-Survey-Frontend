@@ -1,0 +1,7 @@
+rust:
+  directory: /home/victoire/mopro-wsl/zksurvey
+  manifestPath: Cargo.toml
+
+android:
+    apiLevel: 28
+    useSharedLibrary: true

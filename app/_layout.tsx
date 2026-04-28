@@ -1,11 +1,22 @@
 import 'react-native-get-random-values';
 import * as React from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, useRouter } from "expo-router";
 import * as Linking from 'expo-linking';
 import { WalletProvider } from '@/utils/vocdoni/WalletProvider';
 export default function RootLayout() {
   const router = useRouter();
+  const [moproReady, setMoproReady] = useState(false);
+
+  useEffect(() => {
+    import('mopro-ffi')
+      .then(({ uniffiInitAsync }) => uniffiInitAsync())
+      .then(() => setMoproReady(true))
+      .catch((e) => {
+        console.error('[mopro] init failed, native module unavailable:', e);
+        setMoproReady(true); // still let the app render; proof screens will fail gracefully
+      });
+  }, []);
 
   useEffect(() => {
     const handleDeepLink = (url: string) => {
@@ -35,6 +46,8 @@ export default function RootLayout() {
       subscription.remove();
     };
   }, [router]);
+
+  if (!moproReady) return null;
 
   return (
     <WalletProvider>

@@ -25,7 +25,7 @@ The current flow uses:
 
 - Node.js 20 LTS (recommended)
 - npm 10+
-- Android Studio (with Android SDK installed)
+- Android Studio (with Android SDK and NDK installed — NDK is required to compile native ZK modules)
 - Android Emulator or physical device
 - Docker, if running Census3 locally
 - IDE: VS Code (recommended)
@@ -149,17 +149,13 @@ POST /proof/age/verify
 
 ### 6. Run The Project
 
-Start the Expo dev server:
+Build and run on Android emulator/device:
 
 ```bash
-npx expo start
+npm run android
 ```
 
-Build and run on Android emulator:
-
-```bash
-npx expo run:android
-```
+> **Note:** `npx expo start` / Expo Go will not work — the app uses native modules (mopro ZK proofs, react-native-fs) that require a full native build.
 
 Run web target:
 
@@ -182,7 +178,7 @@ To test credential sharing with Valera wallet, you'll need both apps running on 
 2. App uploads metadata to Lighthouse/IPFS.
 3. App calls `createElection(...)` on Sepolia `ElectionManager`.
 4. Voter opens `Explore -> Explore & register`.
-5. Voter selects an SD-JWT mock credential and generates an eligibility proof through the proof service.
+5. Voter requests an SD-JWT credential from the Valera wallet and generates an eligibility proof on-device using mopro.
 6. App checks `verifyProofView(...)`, then calls `registerForElection(...)`.
 7. Contract verifies proof and mints non-transferable ERC1155 tokenId for that election.
 8. Creator opens `My Surveys -> Pending start`.
@@ -191,11 +187,15 @@ To test credential sharing with Valera wallet, you'll need both apps running on 
 11. App calls `startElection(...)` on the contract with Vocdoni election id and spec hash.
 12. Voters open `Explore -> Registered` and vote through Vocdoni SDK.
 
+## ZK Proof Generation
+
+Eligibility proof generation runs fully on-device using [mopro](https://zkmopro.org). No backend or proof service is required for the eligibility flow.
+
 ## Troubleshooting
 
-### Phone Cannot Reach Census3 Or Proof Service
+### Phone Cannot Reach Census3
 
-Use a LAN/Tailscale IP in `EXPO_PUBLIC_CENSUS3_API_URL` and `EXPO_PUBLIC_PROOF_SERVICE_URL`. `localhost` points to the phone itself, not your computer.
+Use a LAN/Tailscale IP in `EXPO_PUBLIC_CENSUS3_API_URL`. `localhost` points to the phone itself, not your computer.
 
 ### Census3 Holder Count Is Lower Than Contract Registered Voters
 
@@ -211,21 +211,19 @@ For web, use browser-reachable URLs:
 
 ```powershell
 $env:EXPO_PUBLIC_CENSUS3_API_URL="http://127.0.0.1:7788/api"
-$env:EXPO_PUBLIC_PROOF_SERVICE_URL="http://127.0.0.1:8787"
 ```
 
 The web app stores its device wallet in `localStorage`, while Android uses `SecureStore`. These are different wallets unless you manually import/copy keys.
 
 
-
 ## Useful Scripts
 
-- `npm run start` - start Expo dev server
-- `npm run android` - run on Android emulator/device
+- `npm run start` - start Expo dev server (Metro only, no native build)
+- `npm run android` - build and run on Android emulator/device
 - `npm run ios` - run on iOS simulator/device
 - `npm run web` - run web target
 - `npm run lint` - run lint checks
-- `npm run proof:service` - local proof service for Proof Generator test flow
+- `npm run assets` - re-link assets (zkey files) to Android without a full rebuild
 
 ## Project Structure
 
