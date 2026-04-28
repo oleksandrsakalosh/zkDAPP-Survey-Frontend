@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
+import { ActivityIndicator, View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import CompletedSurveyCard from "@/components/completedSurveyCard";
 import { palette } from "@/theme/palette";
 
@@ -8,6 +8,7 @@ import { ParticipatedSurveySummary } from "@/domain/models";
 type Props = {
     surveys: ParticipatedSurveySummary[];
     isRefreshing?: boolean;
+    isLoading?: boolean;
     onRefresh?: () => void;
 };
 
@@ -18,6 +19,7 @@ function formatMoney(amount: number) {
 export default function ParticipatedSurveys({
     surveys,
     isRefreshing = false,
+    isLoading = false,
     onRefresh,
 }: Props) {
     const { totalEarned, votedCount, unpaidCount } = useMemo(() => {
@@ -66,37 +68,44 @@ export default function ParticipatedSurveys({
 
             <Text style={styles.sectionTitle}>Vote History</Text>
 
-            <FlatList
-                data={surveys}
-                keyExtractor={(item) => item.id}
-                contentContainerStyle={styles.listContent}
-                renderItem={({ item }) => (
-                    <CompletedSurveyCard
-                        id={item.id}
-                        title={item.title}
-                        category={item.category}
-                        date={item.votedAt}
-                        rewardStatus={item.rewardStatus}
-                        reward={item.reward?.amount ? { amount: item.reward.amount, currency: item.reward.currency } : undefined}
-                    />
-                )}
-                showsVerticalScrollIndicator={false}
-                refreshControl={
-                    <RefreshControl
-                        refreshing={isRefreshing}
-                        onRefresh={onRefresh}
-                        tintColor={palette.primary}
-                    />
-                }
-                ListEmptyComponent={
-                    <View style={styles.emptyState}>
-                        <Text style={styles.emptyTitle}>No participated surveys yet</Text>
-                        <Text style={styles.emptyText}>
-                            Surveys you vote on will appear here. Pull down to refresh.
-                        </Text>
-                    </View>
-                }
-            />
+            {isLoading ? (
+                <View style={styles.loadingState}>
+                    <ActivityIndicator color={palette.primary} />
+                    <Text style={styles.emptyText}>Loading your vote history...</Text>
+                </View>
+            ) : (
+                <FlatList
+                    data={surveys}
+                    keyExtractor={(item) => item.id}
+                    contentContainerStyle={styles.listContent}
+                    renderItem={({ item }) => (
+                        <CompletedSurveyCard
+                            id={item.id}
+                            title={item.title}
+                            category={item.category}
+                            date={item.votedAt}
+                            rewardStatus={item.rewardStatus}
+                            reward={item.reward?.amount ? { amount: item.reward.amount, currency: item.reward.currency } : undefined}
+                        />
+                    )}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl
+                            refreshing={isRefreshing}
+                            onRefresh={onRefresh}
+                            tintColor={palette.primary}
+                        />
+                    }
+                    ListEmptyComponent={
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyTitle}>No participated surveys yet</Text>
+                            <Text style={styles.emptyText}>
+                                Surveys you vote on will appear here. Pull down to refresh.
+                            </Text>
+                        </View>
+                    }
+                />
+            )}
         </View>
     );
 }
@@ -170,5 +179,12 @@ const styles = StyleSheet.create({
         fontSize: 14,
         textAlign: "center",
         lineHeight: 20,
+    },
+    loadingState: {
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 10,
+        paddingHorizontal: 16,
     },
 });

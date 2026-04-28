@@ -1,9 +1,32 @@
 const path = require('path');
+const fs = require('fs');
+const snarkjs = require('snarkjs');
 const { buildAgeInputToFile } = require('./buildAgeInput');
 const { generateWitness } = require('./generateWitness');
 const { generateProof } = require('./generateProof');
 const { verifyProof } = require('./verifyProof');
-const { getTimestampedInputPath } = require('./common');
+const { ageBuildDir, getTimestampedInputPath } = require('./common');
+const { ageCircuit } = require('../config');
+
+async function readAgeProofArtifacts() {
+  const proofPath = path.join(ageBuildDir, ageCircuit.proofFile);
+  const publicSignalsPath = path.join(ageBuildDir, ageCircuit.publicSignalsFile);
+  const proof = JSON.parse(await fs.promises.readFile(proofPath, 'utf8'));
+  const publicSignals = JSON.parse(await fs.promises.readFile(publicSignalsPath, 'utf8'));
+  const rawCalldata = await snarkjs.groth16.exportSolidityCallData(proof, publicSignals);
+  const parsed = JSON.parse(`[${rawCalldata}]`);
+
+  return {
+    proof,
+    publicSignals,
+    calldata: {
+      pi_a: parsed[0],
+      pi_b: parsed[1],
+      pi_c: parsed[2],
+      pubInputs: parsed[3],
+    },
+  };
+}
 
 async function generateAgeProofArtifacts({ currentDate, dobValue, minAge }) {
   const outputPath = getTimestampedInputPath();
@@ -15,11 +38,13 @@ async function generateAgeProofArtifacts({ currentDate, dobValue, minAge }) {
 
   await generateWitness(outputPath);
   await generateProof();
+  const artifacts = await readAgeProofArtifacts();
 
   return {
     ok: true,
     inputPath: path.relative(process.cwd(), outputPath),
     input,
+    ...artifacts,
   };
 }
 
@@ -60,4 +85,5 @@ module.exports = {
   runAgeProofFlow,
   generateAgeProofArtifacts,
   verifyGeneratedAgeProof,
+  readAgeProofArtifacts,
 };

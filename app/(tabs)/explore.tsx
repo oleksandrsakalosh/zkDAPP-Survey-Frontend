@@ -16,11 +16,18 @@ import FilterModal from "@/components/filterModal";
 import SurveyCard from "@/components/surveyCard";
 import { CATEGORIES } from "@/constants/surveyFilters";
 import { SurveyCardData, SortKey } from "@/domain/models";
+import {
+    getUnstartedContractElections,
+    getMyRegisteredElections,
+} from "@/services/contractService";
 import { palette } from "@/theme/palette";
-import { isRegistryConfigured } from "@/utils/registry/client";
-import { loadRegisteredSurveyFeed } from "@/utils/registry/feed";
 import { useEligibilityProfile } from "../hooks/useEligibilityProfile";
 import { checkEligibility } from "@/utils/checkEligibility";
+import { ChainElection, ContractElectionStatus } from "@/types/election";
+import { loadOrFetchElectionMetadataMap, StoredElectionMetadata } from "@/utils/electionMetadataStore";
+import { showAlert } from "@/utils/platformAlert";
+import { createVocdoniClient } from "@/utils/vocdoni/sdk";
+import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
 
 const SORT_LABELS: Record<SortKey, string> = {
     rewardDesc: "Reward ↓",
@@ -31,7 +38,10 @@ const SORT_LABELS: Record<SortKey, string> = {
 const SORT_KEYS: SortKey[] = ["rewardDesc", "rewardAsc", "nameAsc"];
 
 export default function Explore() {
-    const [surveys, setSurveys] = useState<SurveyCardData[]>([]);
+    const [availableChainElections, setAvailableChainElections] = useState<ChainElection[]>([]);
+    const [registeredChainElections, setRegisteredChainElections] = useState<ChainElection[]>([]);
+    const [metadataByElectionId, setMetadataByElectionId] = useState<Record<number, StoredElectionMetadata>>({});
+    const [activeVoterTab, setActiveVoterTab] = useState<"available" | "registered">("available");
     const [isLoadingSurveys, setIsLoadingSurveys] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [feedError, setFeedError] = useState<string | null>(null);
@@ -62,17 +72,60 @@ export default function Explore() {
             }
             setFeedError(null);
 
-            if (!isRegistryConfigured()) {
-                throw new Error("Set EXPO_PUBLIC_REGISTRY_RPC_URL to load the public survey registry.");
+            const [unstarted, registered] = await Promise.all([
+                getUnstartedContractElections(),
+                getMyRegisteredElections(),
+            ]);
+            const wallet = await getOrCreateDeviceWallet();
+            const vocdoniClient = await createVocdoniClient(wallet);
+            const visibleRegistered: ChainElection[] = [];
+
+            for (const election of registered) {
+                if (isChainElectionExpired(election)) {
+                    continue;
+                }
+
+                if (election.status !== ContractElectionStatus.Started || !election.vocdoniElectionId) {
+                    visibleRegistered.push(election);
+                    continue;
+                }
+
+                try {
+                    vocdoniClient.setElectionId(election.vocdoniElectionId);
+                    await vocdoniClient.fetchElection(election.vocdoniElectionId);
+                    const voteId = await vocdoniClient.hasAlreadyVoted();
+                    if (!voteId) {
+                        visibleRegistered.push(election);
+                    }
+                } catch (error) {
+                    console.warn("[explore] registered:vocdoni-check:miss", {
+                        electionId: election.id,
+                        vocdoniElectionId: election.vocdoniElectionId,
+                        error: error instanceof Error ? error.message : error,
+                    });
+                    visibleRegistered.push(election);
+                }
             }
 
-            const feed = await loadRegisteredSurveyFeed();
-            setSurveys(feed.map((item) => item.card));
+            const registeredIds = new Set(visibleRegistered.map((election) => election.id));
+            const visibleUnstarted = unstarted.filter(
+                (election) => !registeredIds.has(election.id) && !isChainElectionExpired(election)
+            );
+            const metadataMap = await loadOrFetchElectionMetadataMap([
+                ...visibleUnstarted,
+                ...visibleRegistered,
+            ]);
+
+            setAvailableChainElections(visibleUnstarted);
+            setRegisteredChainElections(visibleRegistered);
+            setMetadataByElectionId(metadataMap);
         } catch (error) {
             setFeedError(
-                error instanceof Error ? error.message : "Unable to load the public survey registry."
+                error instanceof Error ? error.message : "Unable to load contract surveys."
             );
-            setSurveys([]);
+            setAvailableChainElections([]);
+            setRegisteredChainElections([]);
+            setMetadataByElectionId({});
         } finally {
             if (mode === "initial") {
                 setIsLoadingSurveys(false);
@@ -89,11 +142,20 @@ export default function Explore() {
 
     const surveysWithEligibility = useMemo(
         () =>
-            surveys.map((survey) => ({
+            [
+                ...availableChainElections.map((election) =>
+                    mapChainElectionToSurveyCard(election, "available", metadataByElectionId[election.id])
+                ),
+                ...registeredChainElections.map((election) =>
+                    mapChainElectionToSurveyCard(election, "participated", metadataByElectionId[election.id])
+                ),
+            ].map((survey) => ({
                 ...survey,
-                eligibility: checkEligibility(survey.requirements ?? [], profile),
+                eligibility: !survey.id.startsWith("chain-")
+                                ? checkEligibility(survey.requirements ?? [], profile)
+                                : checkEligibility([], null),
             })),
-        [profile, surveys]
+        [availableChainElections, metadataByElectionId, profile, registeredChainElections]
     );
 
     const filteredSurveys = useMemo(() => {
@@ -160,14 +222,19 @@ export default function Explore() {
     ]);
 
     const categoryFilteredSurveys = useMemo(() => {
+        const tabFiltered =
+            activeVoterTab === "available"
+                ? filteredSurveys.filter((survey) => survey.listVariant !== "participated")
+                : filteredSurveys.filter((survey) => survey.listVariant === "participated");
+
         if (selectedCategory.length === 0 || selectedCategory.includes("All")) {
-            return filteredSurveys;
+            return tabFiltered;
         }
 
-        return filteredSurveys.filter((survey) =>
+        return tabFiltered.filter((survey) =>
             survey.categories.some((cat) => selectedCategory.includes(cat.label))
         );
-    }, [filteredSurveys, selectedCategory]);
+    }, [activeVoterTab, filteredSurveys, selectedCategory]);
 
     const nextSort = () => {
         const currentIndex = SORT_KEYS.indexOf(sortBy);
@@ -175,7 +242,32 @@ export default function Explore() {
         setSortBy(SORT_KEYS[nextIndex]);
     };
 
-    const handleViewDetails = (id: string) => {
+    const handleViewDetails = async (id: string) => {
+        if (id.startsWith("chain-")) {
+            const electionId = Number(id.replace("chain-", ""));
+            const chainElection = [...availableChainElections, ...registeredChainElections].find(
+                (election) => election.id === electionId
+            );
+
+            if (!chainElection) {
+                showAlert("Election unavailable", "Pull down to refresh and try again.");
+                return;
+            }
+
+            if (activeVoterTab === "available") {
+                router.push(`/register/${electionId}/eligibility` as any);
+                return;
+            }
+
+            if (chainElection.status !== ContractElectionStatus.Started || !chainElection.vocdoniElectionId) {
+                showAlert("Not started yet", "You are registered, but this election has not started on Vocdoni yet.");
+                return;
+            }
+
+            router.push(`/voting/${chainElection.vocdoniElectionId}` as any);
+            return;
+        }
+
         router.push(`/voting/${id}` as any);
     };
 
@@ -250,6 +342,35 @@ export default function Explore() {
 
                     <Pressable style={styles.filterButton} onPress={openFilterModal}>
                         <Text style={styles.filterButtonText}>Filter</Text>
+                    </Pressable>
+                </View>
+
+                <View style={styles.voterTabs}>
+                    <Pressable
+                        style={[styles.voterTab, activeVoterTab === "available" && styles.voterTabActive]}
+                        onPress={() => setActiveVoterTab("available")}
+                    >
+                        <Text
+                            style={[
+                                styles.voterTabText,
+                                activeVoterTab === "available" && styles.voterTabTextActive,
+                            ]}
+                        >
+                            Explore & register
+                        </Text>
+                    </Pressable>
+                    <Pressable
+                        style={[styles.voterTab, activeVoterTab === "registered" && styles.voterTabActive]}
+                        onPress={() => setActiveVoterTab("registered")}
+                    >
+                        <Text
+                            style={[
+                                styles.voterTabText,
+                                activeVoterTab === "registered" && styles.voterTabTextActive,
+                            ]}
+                        >
+                            Registered
+                        </Text>
                     </Pressable>
                 </View>
 
@@ -329,22 +450,24 @@ export default function Explore() {
                 {isLoadingSurveys && (
                     <View style={styles.feedbackCard}>
                         <ActivityIndicator color={palette.primary} />
-                        <Text style={styles.feedbackText}>Loading public survey registry...</Text>
+                        <Text style={styles.feedbackText}>Loading contract surveys...</Text>
                     </View>
                 )}
 
                 {!isLoadingSurveys && feedError && (
                     <View style={styles.feedbackCard}>
-                        <Text style={styles.feedbackTitle}>Registry unavailable</Text>
+                        <Text style={styles.feedbackTitle}>Contract surveys unavailable</Text>
                         <Text style={styles.feedbackText}>{feedError}</Text>
                     </View>
                 )}
 
                 {!isLoadingSurveys && !feedError && categoryFilteredSurveys.length === 0 && (
                     <View style={styles.feedbackCard}>
-                        <Text style={styles.feedbackTitle}>No registered surveys</Text>
+                        <Text style={styles.feedbackTitle}>No contract surveys</Text>
                         <Text style={styles.feedbackText}>
-                            Surveys will appear here after they are created in Vocdoni and registered on-chain.
+                            {activeVoterTab === "available"
+                                ? "Registration-open surveys will appear here after they are created on-chain."
+                                : "Elections you registered for will appear here. Started elections can be opened for voting."}
                         </Text>
                     </View>
                 )}
@@ -354,7 +477,13 @@ export default function Explore() {
                         key={survey.id}
                         survey={survey}
                         onVote={handleViewDetails}
-                        voteLabel="Details"
+                        voteLabel={
+                            !survey.id.startsWith("chain-")
+                                ? "Details"
+                                : activeVoterTab === "available"
+                                    ? "Register"
+                                    : "Vote"
+                        }
                     />
                 ))}
             </ScrollView>
@@ -378,6 +507,75 @@ export default function Explore() {
         </>
     );
 }
+
+const mapChainElectionToSurveyCard = (
+    election: ChainElection,
+    listVariant: SurveyCardData["listVariant"],
+    stored?: StoredElectionMetadata
+): SurveyCardData => {
+    const isStarted = election.status === ContractElectionStatus.Started;
+    const targetResponses = election.maxVoters || election.registeredVoters;
+    const metadata = stored?.metadata;
+    const eligibility = stored?.eligibility;
+    const category = metadata?.category || "On-chain";
+    const questions = metadata?.questions ?? [];
+    const requirements = eligibility?.requirements ?? [];
+    const dates = [
+        metadata?.startDate ? `Starts ${new Date(metadata.startDate).toLocaleString()}` : null,
+        metadata?.endDate ? `Ends ${new Date(metadata.endDate).toLocaleString()}` : null,
+    ].filter(Boolean);
+
+    return {
+        id: `chain-${election.id}`,
+        title: metadata?.title || `On-chain survey #${election.id}`,
+        description: metadata?.description || (isStarted
+            ? `Started on Vocdoni as ${election.vocdoniElectionId || "pending id"}.`
+            : "Registration is controlled by the SurveyElectionManager smart contract."),
+        status: isStarted ? "active" : "draft",
+        categories: [{ id: category.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "on-chain", label: category }],
+        tags: metadata?.tags.map((tag) => ({
+            id: tag.toLowerCase().replace(/[^a-z0-9]+/g, "-") || tag,
+            label: tag,
+        })),
+        estimatedMinutes: Math.max(1, questions.length || 1),
+        progress: {
+            responseCount: election.registeredVoters,
+            targetResponses,
+        },
+        budget: {
+            rewardPerVoter: {
+                amount: metadata?.rewardPerVoter ?? 0,
+                currency: "TOKEN",
+            },
+        },
+        eligibility: {
+            decision: "verification_required",
+            matchedRequirements: [],
+            failedRequirements: [],
+            checkedAt: new Date().toISOString(),
+        },
+        requirements,
+        questions,
+        timeInfo: {
+            opensAt: metadata?.startDate ?? (election.startDate > 0 ? new Date(election.startDate * 1000).toISOString() : undefined),
+            closesAt: metadata?.endDate ?? undefined,
+            isOpen: !isStarted,
+            displayLabel: dates.length > 0
+                ? dates.join(" - ")
+                : election.startDate > 0
+                    ? `Starts ${new Date(election.startDate * 1000).toLocaleString()}`
+                    : "Can start anytime",
+        },
+        listVariant,
+        primaryAction: isStarted ? "vote" : "details",
+        primaryActionLabel: isStarted ? "Vote" : "Register",
+    };
+};
+
+const isChainElectionExpired = (election: ChainElection) => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    return election.endDate > 0 && election.endDate <= nowSeconds;
+};
 
 const styles = StyleSheet.create({
     screen: {
@@ -423,6 +621,32 @@ const styles = StyleSheet.create({
         color: palette.white,
         fontWeight: "600",
         fontSize: 14,
+    },
+    voterTabs: {
+        flexDirection: "row",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: palette.border,
+        backgroundColor: palette.white,
+        padding: 4,
+        gap: 4,
+    },
+    voterTab: {
+        flex: 1,
+        borderRadius: 9,
+        paddingVertical: 10,
+        alignItems: "center",
+    },
+    voterTabActive: {
+        backgroundColor: palette.primary,
+    },
+    voterTabText: {
+        color: palette.textSecondary,
+        fontSize: 13,
+        fontWeight: "700",
+    },
+    voterTabTextActive: {
+        color: palette.white,
     },
     categoryRow: {
         gap: 9,

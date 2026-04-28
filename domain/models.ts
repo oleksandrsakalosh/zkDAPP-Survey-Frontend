@@ -126,6 +126,7 @@ export interface SurveyCardData extends SurveySummary {
   listVariant: SurveyListVariant;
   primaryActionLabel?: string;
   primaryAction?: "vote" | "continue" | "details";
+  questions?: SurveyQuestion[];
 }
 
 export interface SurveyDetail extends SurveySummary {

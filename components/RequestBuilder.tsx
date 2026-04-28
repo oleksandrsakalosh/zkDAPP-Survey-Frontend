@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   Pressable,
-  Alert,
   Linking,
   ActivityIndicator,
   TextInput,
@@ -21,6 +20,7 @@ import {
   getCredentialTypeConfig,
   getDefaultAttributesForType,
 } from '@/utils/credentialConfig';
+import { showAlert } from '@/utils/platformAlert';
 
 type RequestBuilderStep = 'credential-type' | 'attributes' | 'review';
 
@@ -191,7 +191,7 @@ export default function RequestBuilder({ onClose }: RequestBuilderProps) {
       console.log('✅ [RequestBuilder] Valera opened - closing modal to await callback');
       onClose?.();
     } catch (error) {
-      Alert.alert(
+      showAlert(
         'Error',
         error instanceof Error ? error.message : 'Failed to send request',
         [{ text: 'OK' }],

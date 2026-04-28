@@ -44,6 +44,14 @@ function readJsonBody(req) {
   });
 }
 
+function normalizeProofError(error) {
+  const message = error instanceof Error ? error.message : String(error || '');
+  if (message.includes('Assert Failed') || message.includes('Error in template AgeCheck')) {
+    return 'Not eligible: credential does not satisfy the age requirement.';
+  }
+  return message || 'Proof generation failed.';
+}
+
 const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     sendJson(res, 204, {});
@@ -63,12 +71,15 @@ const server = http.createServer(async (req, res) => {
         ok: result.ok,
         inputPath: result.inputPath,
         input: result.input,
+        proof: result.proof,
+        publicSignals: result.publicSignals,
+        calldata: result.calldata,
       });
       return;
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
-        error: error instanceof Error ? error.message : 'Proof generation failed.',
+        error: normalizeProofError(error),
       });
       return;
     }
@@ -94,12 +105,15 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         inputPath: result.inputPath,
         input: result.input,
+        proof: result.proof,
+        publicSignals: result.publicSignals,
+        calldata: result.calldata,
       });
       return;
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
-        error: error instanceof Error ? error.message : 'Proof generation failed.',
+        error: normalizeProofError(error),
       });
       return;
     }
