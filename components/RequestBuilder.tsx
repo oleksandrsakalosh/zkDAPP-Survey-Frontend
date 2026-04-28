@@ -159,6 +159,9 @@ export default function RequestBuilder({ onClose }: RequestBuilderProps) {
         aud: 'zkdapp-survey-frontend',
         nonce,
         callbackUrl,
+        ...(credentialConfig.credentialTypes
+          ? { credentialTypes: credentialConfig.credentialTypes }
+          : {}),
         credentialQuery: {
           vct: credentialConfig.vct,
           requestedClaims: selectedClaims,
