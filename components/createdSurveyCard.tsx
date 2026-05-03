@@ -34,14 +34,6 @@ function toNumber(value?: number | null) {
     return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function formatWholeDollars(value: number) {
-    return `$${value.toFixed(0)}`;
-}
-
-function formatDollars(value: number) {
-    return `$${value.toFixed(2)}`;
-}
-
 function getProgress(current: number, target: number) {
     const safeTarget = Math.max(1, target);
     return Math.min(1, Math.max(0, current / safeTarget));
@@ -90,16 +82,16 @@ function getProgressColor(status: SurveyStatus) {
     return palette.success;
 }
 
-function getMetric(status: SurveyStatus, spent: number, budget: number, totalSpent: number): MetricConfig {
+function getMetric(status: SurveyStatus, current: number, target: number): MetricConfig {
     if (status === "results") {
-        return { label: "Total spent", value: formatWholeDollars(totalSpent) };
+        return { label: "Final responses", value: `${current}/${target}` };
     }
 
     if (status === "draft") {
-        return { label: "Budget", value: formatWholeDollars(budget) };
+        return { label: "Planned responses", value: `${target}` };
     }
 
-    return { label: "Spent", value: formatWholeDollars(spent) };
+    return { label: "Registered", value: `${current}` };
 }
 
 function getAction(
@@ -126,19 +118,15 @@ export default function CreatedSurveyCard({
     onEdit,
     onResults,
 }: Props) {
-    const rewardPerVoter = toNumber(survey.rewardPerVoter);
     const responsesCurrent = toNumber(survey.responsesCurrent);
     const responsesTarget = toNumber(survey.responsesTarget);
-    const spent = toNumber(survey.spent);
-    const budget = toNumber(survey.budget);
-    const totalSpent = toNumber(survey.totalSpent);
 
     const statusDisplay = getStatusDisplay(survey.status);
     const subtitle = getSubtitle(survey.status, survey.endsAt);
     const progressLabel = getProgressLabel(survey.status);
     const progress = getProgress(responsesCurrent, responsesTarget);
     const progressColor = getProgressColor(survey.status);
-    const metric = getMetric(survey.status, spent, budget, totalSpent);
+    const metric = getMetric(survey.status, responsesCurrent, responsesTarget);
     const action = getAction(survey.status, survey.id, onManage, onEdit, onResults);
 
     return (
@@ -179,8 +167,6 @@ export default function CreatedSurveyCard({
                 <View style={styles.categoryPill}>
                     <Text style={styles.categoryText}>{survey.category}</Text>
                 </View>
-
-                <Text style={styles.metaText}>{formatDollars(rewardPerVoter)}/voter</Text>
             </View>
 
             <View style={styles.progressHeader}>

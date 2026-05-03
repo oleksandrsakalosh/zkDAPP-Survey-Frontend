@@ -24,10 +24,6 @@ import { showAlert } from "@/utils/platformAlert";
 import { createVocdoniClient } from "@/utils/vocdoni/sdk";
 import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
 
-function formatWholeMoney(amount: number, currency: string) {
-  return `${amount.toFixed(0)} ${currency}`;
-}
-
 function buildRequirements(requirements: SurveyRequirement[] = []) {
   return requirements.map((item) => `${item.type} ${item.value}`);
 }
@@ -97,7 +93,6 @@ const loadContractManageDetail = async (selectedId: string): Promise<SurveyManag
   const eligibility = stored?.eligibility;
   const responseCount = election.registeredVoters;
   const targetResponses = election.maxVoters || election.registeredVoters;
-  const rewardPerVoter = metadata?.rewardPerVoter ?? 0;
   const endDateIso =
     metadata?.endDate ??
     (election.endDate > 0 ? new Date(election.endDate * 1000).toISOString() : undefined);
@@ -123,23 +118,9 @@ const loadContractManageDetail = async (selectedId: string): Promise<SurveyManag
       label: tag,
     })),
     estimatedMinutes: Math.max(1, metadata?.questions.length || 1),
-    budget: {
-      rewardPerVoter: {
-        amount: rewardPerVoter,
-        currency: "TOKEN",
-      },
-      paidCap: targetResponses,
-      remainingBudget: {
-        amount: Math.max(0, (targetResponses - responseCount) * rewardPerVoter),
-        currency: "TOKEN",
-      },
-    },
     progress: {
       responseCount,
-      paidResponseCount: responseCount,
       targetResponses,
-      paidCap: targetResponses,
-      paidSlotsLeft: Math.max(0, targetResponses - responseCount),
     },
     eligibility: {
       decision: "qualify",
@@ -192,27 +173,15 @@ export default function ManageSurveyPage() {
             return;
           }
 
-          const rewardPerVoter = surveyDetail.detail.budget?.rewardPerVoter?.amount ?? 0;
-          const rewardCurrency = surveyDetail.detail.budget?.rewardPerVoter?.currency ?? "USD";
           const responseCount = surveyDetail.detail.progress?.responseCount ?? 0;
           const targetResponses = surveyDetail.detail.progress?.targetResponses ?? 0;
-          const remainingBudgetAmount = Math.max(0, (targetResponses - responseCount) * rewardPerVoter);
 
           setSurvey({
             ...surveyDetail.detail,
-            budget: {
-              ...surveyDetail.detail.budget,
-              paidCap: targetResponses,
-              remainingBudget: {
-                amount: remainingBudgetAmount,
-                currency: rewardCurrency,
-              },
-            },
             progress: {
               ...surveyDetail.detail.progress,
-              paidResponseCount: responseCount,
-              paidCap: targetResponses,
-              paidSlotsLeft: Math.max(0, targetResponses - responseCount),
+              responseCount,
+              targetResponses,
             },
             recentResponses: [],
             allowedActions: ["share", "export_csv"],
@@ -284,16 +253,10 @@ export default function ManageSurveyPage() {
   }
 
   const totalResponses = survey.progress?.responseCount ?? 0;
-  const paidResponses = survey.progress?.paidResponseCount ?? totalResponses;
-  const paidCap = survey.progress?.paidCap ?? survey.budget?.paidCap ?? 0;
-  const paidSlotsLeft = survey.progress?.paidSlotsLeft ?? Math.max(0, paidCap - paidResponses);
-  const remainingBudget = survey.budget?.remainingBudget?.amount ?? 0;
-  const remainingBudgetCurrency = survey.budget?.remainingBudget?.currency ?? "USD";
-  const paidCapProgress = paidCap > 0 ? Math.min(1, paidResponses / paidCap) : 0;
-  const paidCapProgressLabel = `${Math.round(paidCapProgress * 100)}%`;
+  const targetResponses = survey.progress?.targetResponses ?? 0;
+  const responseProgress = targetResponses > 0 ? Math.min(1, totalResponses / targetResponses) : 0;
+  const responseProgressLabel = `${Math.round(responseProgress * 100)}%`;
   const daysRemaining = survey.timeInfo?.daysRemaining ?? 0;
-  const rewardPerVoter = survey.budget?.rewardPerVoter?.amount ?? 0;
-  const rewardCurrency = survey.budget?.rewardPerVoter?.currency ?? "USD";
   const requirements = buildRequirements(survey.requirements);
   const categoryLabel = survey.categories[0]?.label ?? "General";
 
@@ -311,13 +274,7 @@ export default function ManageSurveyPage() {
           "category",
           "duration",
           "total_responses",
-          "paid_responses",
-          "paid_cap",
-          "paid_slots_left",
-          "reward_per_voter",
-          "reward_currency",
-          "remaining_budget",
-          "remaining_budget_currency",
+          "target_responses",
           "requirements",
         ],
         [
@@ -327,13 +284,7 @@ export default function ManageSurveyPage() {
           categoryLabel,
           durationLabel,
           String(totalResponses),
-          String(paidResponses),
-          String(paidCap),
-          String(paidSlotsLeft),
-          rewardPerVoter.toFixed(2),
-          rewardCurrency,
-          remainingBudget.toFixed(2),
-          remainingBudgetCurrency,
+          String(targetResponses),
           requirements.join(" | "),
         ],
       ];
@@ -410,28 +361,24 @@ export default function ManageSurveyPage() {
               <Text style={styles.statLabel}>Total resp.</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{paidResponses}</Text>
-              <Text style={styles.statLabel}>Paid resp.</Text>
+              <Text style={styles.statValue}>{targetResponses}</Text>
+              <Text style={styles.statLabel}>Target</Text>
             </View>
             <View style={styles.statCard}>
-              <Text style={styles.statValue}>{paidCap}</Text>
-              <Text style={styles.statLabel}>Paid cap</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Text style={styles.statValue}>{formatWholeMoney(remainingBudget, remainingBudgetCurrency)}</Text>
-              <Text style={styles.statLabel}>Remaining</Text>
+              <Text style={styles.statValue}>{daysRemaining}</Text>
+              <Text style={styles.statLabel}>Days left</Text>
             </View>
           </View>
 
           <View style={styles.progressWrap}>
             <View style={styles.progressHeader}>
-              <Text style={styles.progressLabel}>Paid cap progress</Text>
+              <Text style={styles.progressLabel}>Response progress</Text>
               <Text style={styles.progressValue}>
-                {paidCapProgressLabel} - {paidSlotsLeft} slots left
+                {responseProgressLabel}
               </Text>
             </View>
             <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${paidCapProgress * 100}%` }]} />
+              <View style={[styles.progressFill, { width: `${responseProgress * 100}%` }]} />
             </View>
             <Text style={styles.progressHint}>
               Closes {closesLabel}{daysRemaining > 0 ? ` - ${daysRemaining} days remaining` : ""}
@@ -473,10 +420,10 @@ export default function ManageSurveyPage() {
 
           <View style={[styles.infoRow, styles.rowDivider]}>
             <Text style={styles.infoLabel} numberOfLines={1}>
-              Paid cap
+              Response target
             </Text>
             <Text style={styles.infoValue}>
-              {paidCap} voters - ${rewardPerVoter.toFixed(2)} each
+              {targetResponses > 0 ? `${targetResponses} voters` : "Open registration"}
             </Text>
           </View>
 

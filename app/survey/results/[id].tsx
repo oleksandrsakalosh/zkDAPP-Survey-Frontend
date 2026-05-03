@@ -31,10 +31,6 @@ const RESULT_COLORS = [
     palette.border,
 ];
 
-function formatMoney(value: number) {
-    return `$${value.toFixed(2)}`;
-}
-
 function formatStatusText(item: RegisteredSurveyResultsItem) {
     const closesAt = item.detail.timeInfo?.closesAt;
     const closeLabel = closesAt
@@ -52,20 +48,16 @@ function formatStatusText(item: RegisteredSurveyResultsItem) {
     return `Live results · ${closeLabel}`;
 }
 
-function buildCsvContent(item: RegisteredSurveyResultsItem, paidOut: number) {
+function buildCsvContent(item: RegisteredSurveyResultsItem) {
     const rows: string[][] = [
-        ["survey_id", "title", "status", "category", "responses", "paid_responses", "paid_out"],
+        ["survey_id", "title", "status", "category", "responses", "target_responses"],
         [
             item.detail.id,
             item.detail.title,
             item.detail.status,
             item.detail.categories[0]?.label ?? "General",
             String(item.detail.progress?.responseCount ?? 0),
-            String(Math.min(
-                item.detail.progress?.responseCount ?? 0,
-                item.detail.progress?.targetResponses ?? 0
-            )),
-            paidOut.toFixed(2),
+            String(item.detail.progress?.targetResponses ?? 0),
         ],
         [],
         ["question_number", "question_title", "option_label", "count", "percent"],
@@ -154,16 +146,6 @@ export default function SurveyResultsScreen() {
         };
     }, [selectedId]);
 
-    const paidResponses = useMemo(() => Math.min(
-        surveyResults?.detail.progress?.responseCount ?? 0,
-        surveyResults?.detail.progress?.targetResponses ?? 0
-    ), [surveyResults?.detail.progress?.responseCount, surveyResults?.detail.progress?.targetResponses]);
-
-    const paidOut = useMemo(() => {
-        const rewardPerVoter = surveyResults?.detail.budget?.rewardPerVoter?.amount ?? 0;
-        return paidResponses * rewardPerVoter;
-    }, [paidResponses, surveyResults?.detail.budget?.rewardPerVoter?.amount]);
-
     const questionsWithTallies = useMemo(
         () => surveyResults?.questionResults.filter((question) =>
             question.options.some((option) => option.count > 0)
@@ -197,7 +179,7 @@ export default function SurveyResultsScreen() {
         try {
             setIsExporting(true);
 
-            const csvContent = buildCsvContent(surveyResults, paidOut);
+            const csvContent = buildCsvContent(surveyResults);
             const baseDir = FileSystem.documentDirectory;
 
             if (!baseDir) {
@@ -303,8 +285,8 @@ export default function SurveyResultsScreen() {
 
                     <View style={styles.statsRow}>
                         <StatCard label="Total resp." value={String(totalResponses)} />
-                        <StatCard label="Paid resp." value={String(paidResponses)} />
-                        <StatCard label="Paid out" value={formatMoney(paidOut)} />
+                        <StatCard label="Target" value={String(surveyResults.detail.progress?.targetResponses ?? 0)} />
+                        <StatCard label="Questions" value={String(surveyResults.detail.questions?.length ?? 0)} />
                     </View>
                 </View>
 

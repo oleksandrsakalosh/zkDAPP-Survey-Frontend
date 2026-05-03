@@ -21,10 +21,6 @@ import { checkEligibility } from "@/utils/checkEligibility";
 import { RegisteredSurveyFeedItem, loadRegisteredSurveyFeed } from "@/utils/registry/feed";
 import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
 
-function formatDollars(value: number) {
-    return `$${value.toFixed(2)}`;
-}
-
 function formatShortDate(dateIso?: string | null) {
     if (!dateIso) {
         return "-";
@@ -71,8 +67,6 @@ const mapFeedItemToParticipated = (item: RegisteredSurveyFeedItem): Participated
     votedAt:
         item.detail.timeInfo?.opensAt ??
         new Date(item.registry.createdAt * 1000).toISOString(),
-    rewardStatus: "not_applicable",
-    reward: item.detail.budget?.rewardPerVoter,
 });
 
 export default function Home() {
@@ -164,7 +158,6 @@ export default function Home() {
 
     const activeResponses = activeSurvey?.progress?.responseCount ?? 0;
     const activeTarget = activeSurvey?.progress?.targetResponses ?? 0;
-    const activeRewardPerVoter = activeSurvey?.budget?.rewardPerVoter?.amount ?? 0;
     const activeCategory = activeSurvey?.categories?.[0]?.label ?? "General";
     const activeClosesAt =
         activeSurvey?.timeInfo?.closesAt
@@ -232,9 +225,9 @@ export default function Home() {
                                     </View>
                                     <View style={styles.metricItem}>
                                         <Text style={styles.metricValue}>
-                                            {formatDollars(activeRewardPerVoter)}
+                                            {progressPercent}%
                                         </Text>
-                                        <Text style={styles.metricLabel}>Per Voter</Text>
+                                        <Text style={styles.metricLabel}>Progress</Text>
                                     </View>
                                 </View>
 
@@ -278,8 +271,6 @@ export default function Home() {
                                     title={survey.title}
                                     category={survey.category ?? "General"}
                                     date={formatShortDate(survey.votedAt)}
-                                    reward={survey.reward}
-                                    rewardStatus={survey.rewardStatus}
                                 />
                             ))
                         ) : (

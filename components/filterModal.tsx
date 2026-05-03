@@ -8,7 +8,6 @@ import {
     View,
     ScrollView
 } from "react-native";
-import Slider from "@react-native-community/slider";
 import { CATEGORIES } from "@/constants/surveyFilters";
 import { palette } from "@/theme/palette"; 
 
@@ -23,9 +22,6 @@ type FilterModalProps = {
 
     draftCategories: string[];
     setDraftCategories: React.Dispatch<React.SetStateAction<string[]>>;
-
-    draftMinReward: number;
-    setDraftMinReward: React.Dispatch<React.SetStateAction<number>>;
 
     draftOpenOnly: boolean;
     setDraftOpenOnly: React.Dispatch<React.SetStateAction<boolean>>;
@@ -44,8 +40,6 @@ export default function FilterModal({
     onApply,
     draftCategories,
     setDraftCategories,
-    draftMinReward,
-    setDraftMinReward,
     draftOpenOnly,
     setDraftOpenOnly,
     draftTime,
@@ -123,31 +117,6 @@ export default function FilterModal({
                                     </Pressable>
                                 );
                             })}
-                        </View>
-
-                        <Text style={styles.sectionTitle}>Minimum reward</Text>
-                        <View style={styles.rewardBox}>
-                            <View style={styles.rewardHeaderRow}>
-                                <Text style={styles.rewardPlaceholder}>From</Text>
-                                <Text style={styles.rewardValue}>${draftMinReward}</Text>
-                            </View>
-
-                            <Slider
-                                style={styles.slider}
-                                minimumValue={0}
-                                maximumValue={20}
-                                step={1}
-                                value={draftMinReward}
-                                onValueChange={setDraftMinReward}
-                                minimumTrackTintColor={palette.primary}
-                                maximumTrackTintColor={palette.border}
-                                thumbTintColor={palette.primary}
-                            />
-
-                            <View style={styles.rewardScaleRow}>
-                                <Text style={styles.rewardScaleText}>$0</Text>
-                                <Text style={styles.rewardScaleText}>$20</Text>
-                            </View>
                         </View>
 
                         <Text style={styles.sectionTitle}>Availability</Text>
@@ -344,50 +313,6 @@ const styles = StyleSheet.create({
 
     modalChipTextActive: {
         color: palette.white,
-    },
-
-    rewardBox: {
-        marginTop: 2,
-        borderWidth: 1,
-        borderColor: palette.border,
-        backgroundColor: palette.surfaceSoft,
-        borderRadius: 18,
-        paddingHorizontal: 18,
-        paddingVertical: 16,
-    },
-
-    rewardHeaderRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 12,
-    },
-
-    rewardPlaceholder: {
-        fontSize: 15,
-        color: palette.textSecondary,
-    },
-
-    rewardValue: {
-        fontSize: 28,
-        fontWeight: "700",
-        color: palette.primaryDark,
-    },
-
-    slider: {
-        width: "100%",
-        height: 40,
-    },
-
-    rewardScaleRow: {
-        flexDirection: "row",
-        justifyContent: "space-between",
-        marginTop: 4,
-    },
-
-    rewardScaleText: {
-        fontSize: 13,
-        color: palette.textSecondary,
     },
 
     toggleRow: {

@@ -3,30 +3,19 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 
 import { palette } from "@/theme/palette";
-import { Money, RewardStatus } from "@/domain/models";
 
 type Props = {
     id: string;
     title: string;
     category: string;
     date: string;
-    reward?: Money | null;
-    rewardStatus?: RewardStatus;
 };
 
 export default function CompletedSurveyCard({
     title,
     category,
     date,
-    reward,
-    rewardStatus,
 }: Props) {
-    const isPaid = rewardStatus === "paid" && reward !== null && reward !== undefined && reward.amount > 0;
-    const isRecordedOnly =
-        rewardStatus === "not_applicable" ||
-        rewardStatus === "pending" ||
-        rewardStatus === "eligible";
-
     const handlePress = () => {};
 
     return (
@@ -42,25 +31,11 @@ export default function CompletedSurveyCard({
                         {category} | {date}
                     </Text>
 
-                    {isPaid ? (
-                        <View style={styles.paidBadge}>
-                            <Text style={styles.paidText}>
-                                Reward paid  +{reward.amount.toFixed(2)} {reward.currency}
-                            </Text>
-                        </View>
-                    ) : isRecordedOnly ? (
-                        <View style={styles.recordedBadge}>
-                            <Text style={styles.recordedText}>
-                                Vote recorded on Vocdoni
-                            </Text>
-                        </View>
-                    ) : (
-                        <View style={styles.unpaidBadge}>
-                            <Text style={styles.unpaidText}>
-                                Paid cap reached - not paid
-                            </Text>
-                        </View>
-                    )}
+                    <View style={styles.recordedBadge}>
+                        <Text style={styles.recordedText}>
+                            Vote recorded on Vocdoni
+                        </Text>
+                    </View>
                 </View>
 
                 <View style={styles.checkCircle}>
@@ -108,18 +83,6 @@ const styles = StyleSheet.create({
         color: palette.textSecondary,
         marginBottom: 6,
     },
-    paidBadge: {
-        backgroundColor: palette.successLight,
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 10,
-        alignSelf: "flex-start",
-    },
-    paidText: {
-        color: palette.success,
-        fontWeight: "500",
-        fontSize: 12,
-    },
     recordedBadge: {
         backgroundColor: palette.primaryNegative,
         paddingVertical: 8,
@@ -129,18 +92,6 @@ const styles = StyleSheet.create({
     },
     recordedText: {
         color: palette.primary,
-        fontWeight: "500",
-        fontSize: 12,
-    },
-    unpaidBadge: {
-        backgroundColor: palette.orangeLight,
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 10,
-        alignSelf: "flex-start",
-    },
-    unpaidText: {
-        color: palette.orange,
         fontWeight: "500",
         fontSize: 12,
     },

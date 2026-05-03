@@ -228,7 +228,6 @@ export default function RequirementsStep() {
                         <View style={styles.stepPill} />
                         <View style={styles.stepPill} />
                         <View style={[styles.stepPill, styles.stepPillActive]} />
-                        <View style={styles.stepPill} />
                     </View>
                 </View>
 
@@ -331,7 +330,7 @@ export default function RequirementsStep() {
                     </Pressable>
 
                     <Pressable style={styles.nextBtn} onPress={onNext}>
-                        <Text style={styles.nextText}>Next (3/4)</Text>
+                        <Text style={styles.nextText}>Review</Text>
                         <Text style={styles.nextArrow}>›</Text>
                     </Pressable>
                 </View>

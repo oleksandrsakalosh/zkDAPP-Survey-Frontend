@@ -30,12 +30,10 @@ import { createVocdoniClient } from "@/utils/vocdoni/sdk";
 import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
 
 const SORT_LABELS: Record<SortKey, string> = {
-    rewardDesc: "Reward ↓",
-    rewardAsc: "Reward ↑",
     nameAsc: "Name A-Z",
 };
 
-const SORT_KEYS: SortKey[] = ["rewardDesc", "rewardAsc", "nameAsc"];
+const SORT_KEYS: SortKey[] = ["nameAsc"];
 
 export default function Explore() {
     const [availableChainElections, setAvailableChainElections] = useState<ChainElection[]>([]);
@@ -46,19 +44,17 @@ export default function Explore() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [feedError, setFeedError] = useState<string | null>(null);
     const [query, setQuery] = useState("");
-    const [sortBy, setSortBy] = useState<SortKey>("rewardDesc");
+    const [sortBy, setSortBy] = useState<SortKey>("nameAsc");
     const [selectedCategory, setSelectedCategory] = useState<string[]>([]);
 
     const [isFilterVisible, setIsFilterVisible] = useState(false);
 
     const [draftCategories, setDraftCategories] = useState<string[]>([]);
-    const [draftMinReward, setDraftMinReward] = useState(0);
     const [draftOpenOnly, setDraftOpenOnly] = useState(false);
     const [draftTime, setDraftTime] = useState("");
     const [draftQualifiedOnly, setDraftQualifiedOnly] = useState(false);
 
     const [appliedCategories, setAppliedCategories] = useState<string[]>([]);
-    const [appliedMinReward, setAppliedMinReward] = useState(0);
     const [appliedOpenOnly, setAppliedOpenOnly] = useState(false);
     const [appliedTime, setAppliedTime] = useState("");
     const [appliedQualifiedOnly, setAppliedQualifiedOnly] = useState(false);
@@ -171,10 +167,6 @@ export default function Explore() {
             );
         }
 
-        result = result.filter(
-            (survey) => (survey.budget?.rewardPerVoter?.amount ?? 0) >= appliedMinReward
-        );
-
         if (appliedOpenOnly) {
             result = result.filter((survey) => survey.status === "active");
         }
@@ -202,20 +194,12 @@ export default function Explore() {
         }
 
         return [...result].sort((a, b) => {
-            if (sortBy === "rewardDesc") {
-                return (b.budget?.rewardPerVoter?.amount ?? 0) - (a.budget?.rewardPerVoter?.amount ?? 0);
-            }
-            if (sortBy === "rewardAsc") {
-                return (a.budget?.rewardPerVoter?.amount ?? 0) - (b.budget?.rewardPerVoter?.amount ?? 0);
-            }
             return a.title.localeCompare(b.title);
         });
     }, [
         query,
-        sortBy,
         surveysWithEligibility,
         appliedCategories,
-        appliedMinReward,
         appliedOpenOnly,
         appliedTime,
         appliedQualifiedOnly,
@@ -287,7 +271,6 @@ export default function Explore() {
 
     const openFilterModal = () => {
         setDraftCategories(appliedCategories);
-        setDraftMinReward(appliedMinReward);
         setDraftOpenOnly(appliedOpenOnly);
         setDraftTime(appliedTime);
         setDraftQualifiedOnly(appliedQualifiedOnly);
@@ -296,7 +279,6 @@ export default function Explore() {
 
     const resetFilters = () => {
         setDraftCategories([]);
-        setDraftMinReward(0);
         setDraftOpenOnly(false);
         setDraftTime("");
         setDraftQualifiedOnly(false);
@@ -304,7 +286,6 @@ export default function Explore() {
 
     const applyFilters = () => {
         setAppliedCategories(draftCategories);
-        setAppliedMinReward(Number(draftMinReward) || 0);
         setAppliedOpenOnly(draftOpenOnly);
         setAppliedTime(draftTime);
         setAppliedQualifiedOnly(draftQualifiedOnly);
@@ -411,11 +392,6 @@ export default function Explore() {
                         </View>
                     )}
 
-                    {appliedMinReward > 0 && (
-                        <View style={styles.activeTag}>
-                            <Text style={styles.activeTagText}>Reward: ${appliedMinReward}+</Text>
-                        </View>
-                    )}
 
                     {appliedOpenOnly && (
                         <View style={styles.activeTag}>
@@ -495,8 +471,6 @@ export default function Explore() {
                 onApply={applyFilters}
                 draftCategories={draftCategories}
                 setDraftCategories={setDraftCategories}
-                draftMinReward={draftMinReward}
-                setDraftMinReward={setDraftMinReward}
                 draftOpenOnly={draftOpenOnly}
                 setDraftOpenOnly={setDraftOpenOnly}
                 draftTime={draftTime}
@@ -730,3 +704,5 @@ const styles = StyleSheet.create({
         textAlign: "center",
     },
 });
+
+
