@@ -10,6 +10,7 @@ type Props = {
     isRefreshing?: boolean;
     isLoading?: boolean;
     onRefresh?: () => void;
+    onResults?: (id: string) => void;
 };
 
 export default function ParticipatedSurveys({
@@ -17,6 +18,7 @@ export default function ParticipatedSurveys({
     isRefreshing = false,
     isLoading = false,
     onRefresh,
+    onResults,
 }: Props) {
     const votedCount = useMemo(() => surveys.length, [surveys]);
 
@@ -56,6 +58,8 @@ export default function ParticipatedSurveys({
                             title={item.title}
                             category={item.category}
                             date={item.votedAt}
+                            actionLabel="View results"
+                            onPress={onResults}
                         />
                     )}
                     showsVerticalScrollIndicator={false}

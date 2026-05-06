@@ -78,6 +78,18 @@ const isChainElectionExpired = (election: ChainElection) => {
     return election.endDate > 0 && election.endDate <= nowSeconds;
 };
 
+const isVocdoniCompletedStatus = (status?: string | null) => {
+    const normalized = String(status ?? "").trim().toUpperCase();
+    return (
+        normalized === "ENDED" ||
+        normalized === "CLOSED" ||
+        normalized === "RESULTS" ||
+        normalized === "CANCELED" ||
+        normalized === "CANCELLED" ||
+        normalized === "ARCHIVED"
+    );
+};
+
 const isReadyToStart = (election: ChainElection) => {
     const nowSeconds = Math.floor(Date.now() / 1000);
     const maxReached = election.maxVoters > 0 && election.registeredVoters >= election.maxVoters;
@@ -207,8 +219,10 @@ export default function Home() {
 
                 try {
                     vocdoniClient.setElectionId(election.vocdoniElectionId);
-                    await vocdoniClient.fetchElection(election.vocdoniElectionId);
-                    fetchableStartedCreated.push(election);
+                    const vocdoniElection = await vocdoniClient.fetchElection(election.vocdoniElectionId);
+                    if (!isVocdoniCompletedStatus(String(vocdoniElection?.status ?? ""))) {
+                        fetchableStartedCreated.push(election);
+                    }
                 } catch (error) {
                     console.warn("[home] created:vocdoni-check:miss", {
                         electionId: election.id,
@@ -527,6 +541,8 @@ export default function Home() {
                                     title={survey.title}
                                     category={survey.category ?? "General"}
                                     date={formatShortDate(survey.votedAt)}
+                                    actionLabel="View results"
+                                    onPress={(id) => { router.push(`/survey/results/${id}`); }}
                                 />
                             ))
                         ) : (
