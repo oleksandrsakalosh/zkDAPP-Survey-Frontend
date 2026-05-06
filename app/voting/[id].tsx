@@ -100,12 +100,6 @@ const loadContractSurveyDetail = async (vocdoniElectionId: string): Promise<Surv
       responseCount: election.registeredVoters,
       targetResponses: election.maxVoters || election.registeredVoters,
     },
-    budget: {
-      rewardPerVoter: {
-        amount: metadata?.rewardPerVoter ?? 0,
-        currency: "TOKEN",
-      },
-    },
     eligibility: {
       decision: voteId ? "already_voted" : "qualify",
       matchedRequirements: [],
@@ -290,18 +284,6 @@ export default function SurveyDetailsScreen() {
           </View>
         )}
 
-        {survey.budget?.rewardPerVoter && (
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>Reward</Text>
-            <View style={styles.rewardBadge}>
-              <Feather name="award" size={16} color={palette.success} />
-              <Text style={styles.rewardText}>
-                {survey.budget.rewardPerVoter.amount} {survey.budget.rewardPerVoter.currency} upon completion
-              </Text>
-            </View>
-          </View>
-        )}
-
         {survey.requirements && survey.requirements.length > 0 && (
           <View style={styles.card}>
             <Text style={styles.cardLabel}>Requirements</Text>
@@ -474,23 +456,6 @@ const styles = StyleSheet.create({
   tagText: {
     fontSize: 12,
     fontWeight: "600",
-  },
-  rewardBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: palette.successLight,
-    borderWidth: 1.5,
-    borderColor: palette.success,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    alignSelf: "flex-start",
-  },
-  rewardText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: palette.success,
   },
   requirementRow: {
     flexDirection: "row",

@@ -15,7 +15,6 @@ import ParticipatedSurveys from "@/app/survey/participatedSurveys";
 import {
     CreatedSurveyCardData,
     ParticipatedSurveySummary,
-    SurveyDraft,
 } from "@/domain/models";
 import { palette } from "@/theme/palette";
 import { router, useLocalSearchParams } from "expo-router";
@@ -27,10 +26,7 @@ import {
 } from "@/services/contractService";
 import { ChainElection, ContractElectionStatus } from "@/types/election";
 import { loadOrFetchElectionMetadataMap, StoredElectionMetadata } from "@/utils/electionMetadataStore";
-import { registerSurveyInRegistry } from "@/utils/registry/client";
 import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
-import { publishSurveyDraft } from "@/utils/vocdoni/publishSurvey";
-import { voteSurvey } from "@/utils/vocdoni/voteSurvey";
 import { showAlert } from "@/utils/platformAlert";
 import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
 import { createVocdoniClient } from "@/utils/vocdoni/sdk";
@@ -42,38 +38,6 @@ const formatShortDate = (dateIso: string) =>
         month: "short",
         day: "numeric",
     }).format(new Date(dateIso));
-
-const buildQuickVocdoniTestDraft = (): SurveyDraft => {
-    const now = new Date();
-    const endDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-    const surveySuffix = now.toISOString().slice(11, 19).replace(/:/g, "-");
-
-    return {
-        name: `Vocdoni Test Survey ${surveySuffix}`,
-        description: "Quick integration test survey created directly from the My Surveys screen.",
-        startDate: now.toISOString(),
-        endDate: endDate.toISOString(),
-        tags: ["vocdoni", "test"],
-        category: "Vocdoni DEV",
-        rewardPerVoter: 1,
-        voterCap: 5,
-        anonymity: false,
-        requirements: [],
-        questions: [
-            {
-                id: "vocdoni-test-question-1",
-                order: 1,
-                type: "single_choice",
-                title: "Did this Vocdoni test survey publish successfully?",
-                isRequired: true,
-                options: [
-                    { id: "yes", label: "Yes", order: 0 },
-                    { id: "no", label: "No", order: 1 },
-                ],
-            },
-        ],
-    };
-};
 
 const mapChainElectionToCreatedSurvey = (
     election: ChainElection,
@@ -91,11 +55,9 @@ const mapChainElectionToCreatedSurvey = (
         title: metadata?.title || `On-chain survey #${election.id}`,
         category: metadata?.category || "On-chain",
         status: ended ? "results" : "active",
-        rewardPerVoter: metadata?.rewardPerVoter ?? 0,
         endsAt: endsAt ? formatShortDate(endsAt) : null,
         responsesCurrent: election.registeredVoters,
         responsesTarget: election.maxVoters || election.registeredVoters,
-        spent: 0,
     };
 };
 
@@ -110,11 +72,6 @@ const mapChainElectionToParticipatedSurvey = (
         election.startedAt > 0
             ? new Date(election.startedAt * 1000).toISOString()
             : new Date().toISOString(),
-    rewardStatus: "not_applicable",
-    reward:
-        stored?.metadata.rewardPerVoter != null
-            ? { amount: stored.metadata.rewardPerVoter, currency: "TOKEN" }
-            : undefined,
 });
 
 export default function MySurveys() {
@@ -138,14 +95,10 @@ export default function MySurveys() {
     const [createdVocdoniElections, setCreatedVocdoniElections] = useState<ChainElection[]>([]);
     const [participatedChainElections, setParticipatedChainElections] = useState<ChainElection[]>([]);
     const [metadataByElectionId, setMetadataByElectionId] = useState<Record<number, StoredElectionMetadata>>({});
-    const [publishedExplorerUrls, setPublishedExplorerUrls] = useState<Record<string, string>>({});
-    const [publishedRegistryTxHashes, setPublishedRegistryTxHashes] = useState<Record<string, string>>({});
-    const [submittedVoteIds, setSubmittedVoteIds] = useState<Record<string, string>>({});
-    const [latestPublishedTestSurveyId, setLatestPublishedTestSurveyId] = useState<string | null>(null);
+    const [publishedExplorerUrls] = useState<Record<string, string>>({});
+    const [publishedRegistryTxHashes] = useState<Record<string, string>>({});
     const [isRegistryLoading, setIsRegistryLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [isQuickPublishing, setIsQuickPublishing] = useState(false);
-    const [isQuickVoting, setIsQuickVoting] = useState(false);
     const [startingElectionId, setStartingElectionId] = useState<number | null>(null);
 
     useEffect(() => {
@@ -263,114 +216,13 @@ export default function MySurveys() {
         [createdChainElections]
     );
 
-    const handleQuickPublishTest = async () => {
-        if (isQuickPublishing) return;
-
-        const draft = buildQuickVocdoniTestDraft();
-
-        try {
-            setIsQuickPublishing(true);
-
-            const publishedElection = await publishSurveyDraft(draft);
-            let registryTxHash: string | null = null;
-
-            try {
-                const registryRegistration = await registerSurveyInRegistry({
-                    electionId: publishedElection.electionId,
-                    category: draft.category || "General",
-                });
-                registryTxHash = registryRegistration.txHash;
-                setPublishedRegistryTxHashes((current) => ({
-                    ...current,
-                    [publishedElection.electionId]: registryRegistration.txHash,
-                }));
-            } catch (registryError) {
-                console.error("[my-surveys] registry:register:error", registryError);
-            }
-
-            setPublishedExplorerUrls((current) => ({
-                ...current,
-                [publishedElection.electionId]: publishedElection.explorerUrl,
-            }));
-            setLatestPublishedTestSurveyId(publishedElection.electionId);
-            await reloadMySurveys();
-
-            showAlert(
-                registryTxHash ? "Vocdoni test survey created" : "Vocdoni survey created, registry failed",
-                registryTxHash
-                    ? publishedElection.rotatedWallet
-                        ? `Election ${publishedElection.electionId} was created on Vocdoni DEV, registered on-chain, and added to your list.\n\nRegistry tx: ${registryTxHash}\n\nThe app switched to a fresh test wallet because the previous DEV faucet wallet was rate-limited. New wallet: ${publishedElection.walletAddress}`
-                        : `Election ${publishedElection.electionId} was created on Vocdoni DEV, registered on-chain, and added to your list.\n\nRegistry tx: ${registryTxHash}`
-                    : `Election ${publishedElection.electionId} was created on Vocdoni DEV, but registry submission failed. The survey will not appear in the public feed until it is registered on-chain.`
-            );
-        } catch (error) {
-            showAlert(
-                "Vocdoni publish failed",
-                error instanceof Error ? error.message : "Unable to create the test survey on Vocdoni."
-            );
-        } finally {
-            setIsQuickPublishing(false);
-        }
-    };
-
-    const handleQuickVoteTest = async () => {
-        if (isQuickVoting) return;
-
-        if (!latestPublishedTestSurveyId) {
-            showAlert(
-                "No test survey yet",
-                "Create a Vocdoni test survey first, then use the vote button."
-            );
-            return;
-        }
-
-        const targetSurvey = createdSurveys.find((survey) => survey.id === latestPublishedTestSurveyId);
-        if (!targetSurvey) {
-            showAlert(
-                "Survey not found",
-                "The latest test survey is no longer in your created registry list. Create a new test survey and try again."
-            );
-            return;
-        }
-
-        try {
-            setIsQuickVoting(true);
-
-            const submittedVote = await voteSurvey(latestPublishedTestSurveyId, [0]);
-
-            setSubmittedVoteIds((current) => ({
-                ...current,
-                [latestPublishedTestSurveyId]: submittedVote.voteId,
-            }));
-
-            await reloadMySurveys();
-
-            showAlert(
-                submittedVote.alreadyVoted ? "Vote already recorded" : "Test vote submitted",
-                submittedVote.alreadyVoted
-                    ? `This device wallet already voted on election ${latestPublishedTestSurveyId}.\n\nVote ID: ${submittedVote.voteId}`
-                    : `Vote ID: ${submittedVote.voteId}\n\nElection: ${latestPublishedTestSurveyId}`
-            );
-        } catch (error) {
-            showAlert(
-                "Vote failed",
-                error instanceof Error ? error.message : "Unable to submit the test vote to Vocdoni."
-            );
-        } finally {
-            setIsQuickVoting(false);
-        }
-    };
-
     const handleManageSurvey = (id: string) => {
         const explorerUrl = publishedExplorerUrls[id];
         const registryTxHash = publishedRegistryTxHashes[id];
-        const voteId = submittedVoteIds[id];
         if (explorerUrl) {
             showAlert(
                 "Vocdoni test survey",
-                voteId
-                    ? `Election ${id}\n\nExplorer: ${explorerUrl}${registryTxHash ? `\n\nRegistry tx: ${registryTxHash}` : ""}\n\nLatest vote: ${voteId}`
-                    : `Election ${id}\n\nExplorer: ${explorerUrl}${registryTxHash ? `\n\nRegistry tx: ${registryTxHash}` : ""}`
+                `Election ${id}\n\nExplorer: ${explorerUrl}${registryTxHash ? `\n\nRegistry tx: ${registryTxHash}` : ""}`
             );
             return;
         }
@@ -484,11 +336,6 @@ export default function MySurveys() {
                     <CreatedSurveys
                         surveys={createdSurveys}
                         onCreateNew={() => { router.push("/create-survey"); }}
-                        onQuickPublishTest={handleQuickPublishTest}
-                        isQuickPublishing={isQuickPublishing}
-                        onQuickVoteTest={handleQuickVoteTest}
-                        canQuickVoteTest={Boolean(latestPublishedTestSurveyId)}
-                        isQuickVoting={isQuickVoting}
                         isRefreshing={isRefreshing}
                         isLoading={isRegistryLoading}
                         onRefresh={handleRefresh}

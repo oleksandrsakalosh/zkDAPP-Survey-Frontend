@@ -12,45 +12,17 @@ type Props = {
     onRefresh?: () => void;
 };
 
-function formatMoney(amount: number) {
-    return `$${amount.toFixed(2)}`;
-}
-
 export default function ParticipatedSurveys({
     surveys,
     isRefreshing = false,
     isLoading = false,
     onRefresh,
 }: Props) {
-    const { totalEarned, votedCount, unpaidCount } = useMemo(() => {
-        let earned = 0;
-        let unpaid = 0;
-
-        for (const s of surveys) {
-            const r = s.reward;
-            const isPaid = r !== null && r !== undefined && r.amount > 0;
-
-            if (isPaid) earned += r.amount;
-            else unpaid += 1;
-        }
-
-        return {
-            totalEarned: earned,
-            votedCount: surveys.length,
-            unpaidCount: unpaid,
-        };
-    }, [surveys]);
+    const votedCount = useMemo(() => surveys.length, [surveys]);
 
     return (
         <View style={styles.container}>
             <View style={styles.statsRow}>
-                <View style={[styles.statCard, styles.earnedCard]}>
-                    <Text style={[styles.statValue, styles.earnedValue]}>
-                        {formatMoney(totalEarned)}
-                    </Text>
-                    <Text style={styles.statLabel}>Earned</Text>
-                </View>
-
                 <View style={[styles.statCard, styles.votedCard]}>
                     <Text style={[styles.statValue, styles.votedValue]}>
                         {votedCount}
@@ -58,11 +30,11 @@ export default function ParticipatedSurveys({
                     <Text style={styles.statLabel}>Voted</Text>
                 </View>
 
-                <View style={[styles.statCard, styles.unpaidCard]}>
-                    <Text style={[styles.statValue, styles.unpaidValue]}>
-                        {unpaidCount}
+                <View style={[styles.statCard, styles.recordedCard]}>
+                    <Text style={[styles.statValue, styles.recordedValue]}>
+                        {surveys.length > 0 ? "Yes" : "No"}
                     </Text>
-                    <Text style={styles.statLabel}>Unpaid votes</Text>
+                    <Text style={styles.statLabel}>History available</Text>
                 </View>
             </View>
 
@@ -84,8 +56,6 @@ export default function ParticipatedSurveys({
                             title={item.title}
                             category={item.category}
                             date={item.votedAt}
-                            rewardStatus={item.rewardStatus}
-                            reward={item.reward?.amount ? { amount: item.reward.amount, currency: item.reward.currency } : undefined}
                         />
                     )}
                     showsVerticalScrollIndicator={false}
@@ -140,13 +110,10 @@ const styles = StyleSheet.create({
         fontWeight: "500",
     },
 
-    earnedCard: { backgroundColor: palette.successLight },
     votedCard: { backgroundColor: palette.primaryNegative },
-    unpaidCard: { backgroundColor: palette.orangeLight },
-
-    earnedValue: { color: palette.success },
+    recordedCard: { backgroundColor: palette.successLight },
     votedValue: { color: palette.primary },
-    unpaidValue: { color: palette.orange },
+    recordedValue: { color: palette.success },
 
     sectionTitle: {
         fontSize: 18,

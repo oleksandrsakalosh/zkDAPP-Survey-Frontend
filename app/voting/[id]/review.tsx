@@ -130,7 +130,7 @@ export default function ReviewScreen() {
           </View>
           <Text style={styles.summaryTitle}>Ready to Submit?</Text>
           <Text style={styles.summaryText}>
-            You've answered {answeredCount} of {questions.length} questions.
+            You&apos;ve answered {answeredCount} of {questions.length} questions.
             Your responses will be securely submitted and verified.
           </Text>
         </View>

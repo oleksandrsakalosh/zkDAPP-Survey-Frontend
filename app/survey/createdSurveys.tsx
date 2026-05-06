@@ -9,11 +9,6 @@ import { palette } from "@/theme/palette";
 type Props = {
     surveys: CreatedSurveyCardData[];
     onCreateNew: () => void;
-    onQuickPublishTest: () => void;
-    isQuickPublishing?: boolean;
-    onQuickVoteTest: () => void;
-    canQuickVoteTest?: boolean;
-    isQuickVoting?: boolean;
     isRefreshing?: boolean;
     isLoading?: boolean;
     onRefresh?: () => void;
@@ -25,11 +20,6 @@ type Props = {
 export default function CreatedSurveys({
     surveys,
     onCreateNew,
-    onQuickPublishTest,
-    isQuickPublishing = false,
-    onQuickVoteTest,
-    canQuickVoteTest = false,
-    isQuickVoting = false,
     isRefreshing = false,
     isLoading = false,
     onRefresh,
@@ -118,56 +108,6 @@ export default function CreatedSurveys({
 
             <View style={styles.stickyWrap}>
                 <Pressable
-                    onPress={onQuickPublishTest}
-                    disabled={isQuickPublishing}
-                    android_ripple={{ color: palette.primaryLight }}
-                    style={({ pressed }) => [
-                        styles.stickyBtn,
-                        pressed && !isQuickPublishing && styles.stickyBtnPressed,
-                        isQuickPublishing && { opacity: 0.7 },
-                    ]}
-                >
-                    <MaterialIcons
-                        name="bolt"
-                        size={18}
-                        color={palette.white}
-                        style={styles.stickyIcon}
-                    />
-                    <Text style={styles.stickyText}>
-                        {isQuickPublishing ? "Publishing to Vocdoni..." : "Create Test Survey on Vocdoni"}
-                    </Text>
-                </Pressable>
-
-                <Pressable
-                    onPress={onQuickVoteTest}
-                    disabled={!canQuickVoteTest || isQuickVoting}
-                    android_ripple={{ color: palette.primaryLight }}
-                    style={({ pressed }) => [
-                        styles.secondaryBtn,
-                        pressed && canQuickVoteTest && !isQuickVoting && styles.secondaryBtnPressed,
-                        (!canQuickVoteTest || isQuickVoting) && styles.secondaryBtnDisabled,
-                    ]}
-                >
-                    <MaterialIcons
-                        name="how-to-vote"
-                        size={18}
-                        color={canQuickVoteTest ? palette.primary : palette.textMuted}
-                        style={styles.stickyIcon}
-                    />
-                    <Text
-                        style={[
-                            styles.secondaryText,
-                            !canQuickVoteTest && styles.secondaryTextDisabled,
-                        ]}
-                    >
-                        {isQuickVoting
-                            ? "Submitting Test Vote..."
-                            : canQuickVoteTest
-                                ? "Vote Latest Test Survey"
-                                : "Create Test Survey First"}
-                    </Text>
-                </Pressable>
-                <Pressable
                     onPress={onCreateNew}
                     android_ripple={{ color: palette.primaryLight }}
                     style={({ pressed }) => [
@@ -246,25 +186,7 @@ const styles = StyleSheet.create({
         borderTopWidth: 1,
         borderTopColor: palette.border,
     },
-    stickyBtn: {
-        height: 54,
-        borderRadius: 16,
-        backgroundColor: palette.primary,
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-    },
-    stickyBtnPressed: {
-        backgroundColor: "#1D4ED8",
-        transform: [{ scale: 0.985 }],
-    },
     stickyIcon: {
-        fontWeight: "800",
-    },
-    stickyText: {
-        color: palette.white,
-        fontSize: 16,
         fontWeight: "800",
     },
     secondaryBtn: {
@@ -281,15 +203,9 @@ const styles = StyleSheet.create({
     secondaryBtnPressed: {
         backgroundColor: palette.primaryNegative,
     },
-    secondaryBtnDisabled: {
-        opacity: 0.7,
-    },
     secondaryText: {
         color: palette.primaryDark,
         fontSize: 15,
         fontWeight: "700",
-    },
-    secondaryTextDisabled: {
-        color: palette.textMuted,
     },
 });

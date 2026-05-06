@@ -42,7 +42,6 @@ export default function SurveyCard({ survey, onVote, voteLabel = "Vote" }: Props
         <View style={styles.card}>
             <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>{survey.title}</Text>
-                <Text style={styles.rewardText}>{survey.budget?.rewardPerVoter?.amount.toFixed(2) ?? "0.00"} {survey.budget?.rewardPerVoter?.currency ?? "USD"}</Text>
             </View>
 
             <Text style={styles.descriptionText}>{survey.description}</Text>
@@ -146,11 +145,6 @@ const styles = StyleSheet.create({
         fontSize: 29 / 2,
         fontWeight: "700",
         lineHeight: 22,
-    },
-    rewardText: {
-        color: palette.success,
-        fontSize: 26 / 2,
-        fontWeight: "700",
     },
     descriptionText: {
         color: palette.textSecondary,

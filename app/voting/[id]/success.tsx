@@ -33,7 +33,6 @@ export default function SuccessScreen() {
     minute: "2-digit",
   });
 
-  const reward = state.survey?.budget?.rewardPerVoter;
   const surveyTitle = state.survey?.title ?? "Survey";
 
   return (
@@ -56,7 +55,7 @@ export default function SuccessScreen() {
           <Text style={styles.centeredTitle}>Thank You!</Text>
           <Text style={styles.centeredText}>
             Your vote has been successfully recorded. Thank you for
-            participating in "{surveyTitle}".
+            participating in &quot;{surveyTitle}&quot;.
           </Text>
         </View>
 
@@ -93,20 +92,6 @@ export default function SuccessScreen() {
           </View>
         </View>
 
-        {reward && (
-          <View style={styles.card}>
-            <Text style={styles.cardLabel}>Reward</Text>
-            <View style={styles.rewardBadge}>
-              <Feather name="award" size={16} color={palette.success} />
-              <Text style={styles.rewardText}>
-                {reward.amount} {reward.currency}
-              </Text>
-            </View>
-            <Text style={styles.rewardNote}>
-              Reward will be distributed after the survey closes.
-            </Text>
-          </View>
-        )}
       </ScrollView>
 
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + 12 }]}>
@@ -236,30 +221,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: palette.success,
-  },
-  rewardBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: palette.successLight,
-    borderWidth: 1.5,
-    borderColor: palette.success,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    alignSelf: "flex-start",
-    marginVertical: 8,
-  },
-  rewardText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: palette.success,
-  },
-  rewardNote: {
-    fontSize: 12,
-    color: palette.textSecondary,
-    lineHeight: 18,
-    marginBottom: 10,
   },
   infoBox: {
     flexDirection: "row",

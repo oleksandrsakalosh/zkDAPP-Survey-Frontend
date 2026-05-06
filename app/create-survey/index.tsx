@@ -240,7 +240,6 @@ export default function CreateSurvey() {
             <View style={[styles.stepPill, styles.stepPillActive]} />
             <View style={styles.stepPill} />
             <View style={styles.stepPill} />
-            <View style={styles.stepPill} />
           </View>
         </View>
 
@@ -421,7 +420,7 @@ export default function CreateSurvey() {
             onPress={onNext}
             style={({ pressed }) => [styles.nextBtn, pressed && { opacity: 0.9 }]}
           >
-            <Text style={styles.nextText}>Next (1/4)</Text>
+            <Text style={styles.nextText}>Next (1/3)</Text>
             <Text style={styles.nextArrow}>›</Text>
           </Pressable>
         </View>

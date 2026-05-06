@@ -20,7 +20,6 @@ import { router } from "expo-router";
 
 export default function Profile() {
     const [newSurveysEnabled, setNewSurveysEnabled] = useState(true);
-    const [rewardUpdatesEnabled, setRewardUpdatesEnabled] = useState(true);
     const [activityEnabled, setActivityEnabled] = useState(false);
     const [showRequestBuilder, setShowRequestBuilder] = useState(false);
     const [showSdJwtParser, setShowSdJwtParser] = useState(false);
@@ -85,13 +84,6 @@ export default function Profile() {
                     subtitle="When matching surveys appear"
                     value={newSurveysEnabled}
                     onValueChange={setNewSurveysEnabled}
-                    withBorder
-                />
-                <ToggleRow
-                    title="Reward Updates"
-                    subtitle="Payouts and confirmations"
-                    value={rewardUpdatesEnabled}
-                    onValueChange={setRewardUpdatesEnabled}
                     withBorder
                 />
                 <ToggleRow
