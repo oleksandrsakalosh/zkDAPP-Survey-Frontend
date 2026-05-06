@@ -9,14 +9,21 @@ type Props = {
     title: string;
     category: string;
     date: string;
+    actionLabel?: string;
+    onPress?: (id: string) => void;
 };
 
 export default function CompletedSurveyCard({
+    id,
     title,
     category,
     date,
+    actionLabel = "Vote recorded on Vocdoni",
+    onPress,
 }: Props) {
-    const handlePress = () => {};
+    const handlePress = () => {
+        onPress?.(id);
+    };
 
     return (
         <Pressable
@@ -33,7 +40,7 @@ export default function CompletedSurveyCard({
 
                     <View style={styles.recordedBadge}>
                         <Text style={styles.recordedText}>
-                            Vote recorded on Vocdoni
+                            {actionLabel}
                         </Text>
                     </View>
                 </View>

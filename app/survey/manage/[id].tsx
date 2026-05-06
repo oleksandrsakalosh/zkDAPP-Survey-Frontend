@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Platform,
   Pressable,
   ScrollView,
@@ -23,6 +24,20 @@ import { loadRegisteredSurveyDetail } from "@/utils/registry/feed";
 import { showAlert } from "@/utils/platformAlert";
 import { createVocdoniClient } from "@/utils/vocdoni/sdk";
 import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
+
+type ResultChoice = {
+  id: string;
+  label: string;
+  votes: number;
+  percent: number;
+};
+
+type QuestionResult = {
+  id: string;
+  title: string;
+  totalVotes: number;
+  choices: ResultChoice[];
+};
 
 function buildRequirements(requirements: SurveyRequirement[] = []) {
   return requirements.map((item) => `${item.type} ${item.value}`);
@@ -65,6 +80,73 @@ const daysRemainingFrom = (iso?: string) => {
   return Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
 };
 
+const getLocalizedText = (value: unknown): string => {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return String(record.default ?? record.en ?? Object.values(record)[0] ?? "");
+  }
+
+  return "";
+};
+
+const toNumberResult = (value: unknown): number => {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const buildQuestionResults = (
+  election: any,
+  questions: SurveyManageDetail["questions"] = []
+): QuestionResult[] => {
+  const rawQuestions = Array.isArray(election?.questions) ? election.questions : [];
+  const rawResults = Array.isArray(election?.results) ? election.results : [];
+  const sourceQuestions = questions.length > 0 ? questions : rawQuestions;
+
+  return sourceQuestions.map((question: any, questionIndex: number) => {
+    const rawQuestion = rawQuestions[questionIndex];
+    const sourceOptions = question.options ?? rawQuestion?.choices ?? rawQuestion?.options ?? [];
+    const resultValues = rawResults[questionIndex] ?? [];
+
+    const choices: ResultChoice[] = sourceOptions.map((option: any, choiceIndex: number) => {
+      const rawChoice = rawQuestion?.choices?.[choiceIndex] ?? rawQuestion?.options?.[choiceIndex];
+      const votes = toNumberResult(
+        resultValues[choiceIndex] ??
+          rawChoice?.results ??
+          option.results ??
+          0
+      );
+
+      return {
+        id: String(option.id ?? rawChoice?.id ?? `${questionIndex}-${choiceIndex}`),
+        label: String(
+          option.label ??
+            getLocalizedText(rawChoice?.title) ??
+            rawChoice?.label ??
+            `Option ${choiceIndex + 1}`
+        ),
+        votes,
+        percent: 0,
+      };
+    });
+
+    const totalVotes = choices.reduce((sum, choice) => sum + choice.votes, 0);
+
+    return {
+      id: String(question.id ?? `${questionIndex}`),
+      title: String(question.title ?? getLocalizedText(rawQuestion?.title) ?? `Question ${questionIndex + 1}`),
+      totalVotes,
+      choices: choices.map((choice) => ({
+        ...choice,
+        percent: totalVotes > 0 ? Math.round((choice.votes / totalVotes) * 100) : 0,
+      })),
+    };
+  });
+};
+
 const loadContractManageDetail = async (selectedId: string): Promise<SurveyManageDetail | null> => {
   const chainId = selectedId.startsWith("chain-") ? Number(selectedId.replace("chain-", "")) : null;
   const createdElections = await getMyCreatedElections();
@@ -81,7 +163,7 @@ const loadContractManageDetail = async (selectedId: string): Promise<SurveyManag
   const wallet = await getOrCreateDeviceWallet();
   const client = await createVocdoniClient(wallet);
   client.setElectionId(election.vocdoniElectionId);
-  await client.fetchElection(election.vocdoniElectionId);
+  const vocdoniElection = await client.fetchElection(election.vocdoniElectionId);
 
   const stored = await loadOrFetchElectionMetadata({
     electionId: election.id,
@@ -91,7 +173,7 @@ const loadContractManageDetail = async (selectedId: string): Promise<SurveyManag
   });
   const metadata = stored?.metadata;
   const eligibility = stored?.eligibility;
-  const responseCount = election.registeredVoters;
+  const responseCount = Number(vocdoniElection?.voteCount ?? election.registeredVoters);
   const targetResponses = election.maxVoters || election.registeredVoters;
   const endDateIso =
     metadata?.endDate ??
@@ -106,7 +188,12 @@ const loadContractManageDetail = async (selectedId: string): Promise<SurveyManag
     description:
       metadata?.description ||
       "Contract-backed Vocdoni survey using the ERC1155 eligibility token census.",
-    status: endDateIso && new Date(endDateIso).getTime() <= Date.now() ? "results" : "active",
+    status:
+      vocdoniElection?.status === "ENDED" ||
+      vocdoniElection?.status === "RESULTS" ||
+      (endDateIso && new Date(endDateIso).getTime() <= Date.now())
+        ? "results"
+        : "active",
     categories: [
       {
         id: (metadata?.category || "on-chain").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
@@ -147,9 +234,45 @@ export default function ManageSurveyPage() {
   const selectedId = Array.isArray(params.id) ? params.id[0] : params.id;
 
   const [survey, setSurvey] = React.useState<SurveyManageDetail | null>(null);
+  const [questionResults, setQuestionResults] = React.useState<QuestionResult[]>([]);
+  const [vocdoniStatus, setVocdoniStatus] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isRefreshingResults, setIsRefreshingResults] = React.useState(false);
   const [isExporting, setIsExporting] = React.useState(false);
+  const [isEndingSurvey, setIsEndingSurvey] = React.useState(false);
   const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
+
+  const refreshVocdoniResults = React.useCallback(async (surveyId: string, detail?: SurveyManageDetail) => {
+    const wallet = await getOrCreateDeviceWallet();
+    const client = await createVocdoniClient(wallet);
+    client.setElectionId(surveyId);
+    const election = await client.fetchElection(surveyId);
+    const nextResults = buildQuestionResults(election, detail?.questions ?? []);
+    const nextVoteCount = Number(election?.voteCount ?? detail?.progress?.responseCount ?? 0);
+    const nextStatus = String(election?.status ?? "");
+
+    setVocdoniStatus(nextStatus || null);
+    setQuestionResults(nextResults);
+    setSurvey((current) => {
+      const base = detail ?? current;
+      if (!base) {
+        return current;
+      }
+
+      return {
+        ...base,
+        status: nextStatus === "ENDED" || nextStatus === "RESULTS" ? "results" : base.status,
+        progress: {
+          ...base.progress,
+          responseCount: nextVoteCount,
+        },
+        timeInfo: {
+          ...base.timeInfo,
+          isOpen: nextStatus !== "ENDED" && nextStatus !== "RESULTS",
+        },
+      };
+    });
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -176,7 +299,7 @@ export default function ManageSurveyPage() {
           const responseCount = surveyDetail.detail.progress?.responseCount ?? 0;
           const targetResponses = surveyDetail.detail.progress?.targetResponses ?? 0;
 
-          setSurvey({
+          const nextSurvey: SurveyManageDetail = {
             ...surveyDetail.detail,
             progress: {
               ...surveyDetail.detail.progress,
@@ -185,7 +308,9 @@ export default function ManageSurveyPage() {
             },
             recentResponses: [],
             allowedActions: ["share", "export_csv"],
-          });
+          };
+          setSurvey(nextSurvey);
+          await refreshVocdoniResults(selectedId, nextSurvey);
           return;
         }
 
@@ -196,6 +321,7 @@ export default function ManageSurveyPage() {
 
         if (isMounted) {
           setSurvey(contractDetail);
+          await refreshVocdoniResults(contractDetail.id, contractDetail);
         }
       } catch (error) {
         if (!isMounted) {
@@ -216,7 +342,7 @@ export default function ManageSurveyPage() {
     return () => {
       isMounted = false;
     };
-  }, [selectedId]);
+  }, [refreshVocdoniResults, selectedId]);
 
   const durationLabel = useMemo(
     () => formatDurationLabel(survey?.timeInfo?.opensAt, survey?.timeInfo?.closesAt),
@@ -259,6 +385,24 @@ export default function ManageSurveyPage() {
   const daysRemaining = survey.timeInfo?.daysRemaining ?? 0;
   const requirements = buildRequirements(survey.requirements);
   const categoryLabel = survey.categories[0]?.label ?? "General";
+
+  const handleRefreshResults = async () => {
+    if (!survey || isRefreshingResults) {
+      return;
+    }
+
+    try {
+      setIsRefreshingResults(true);
+      await refreshVocdoniResults(survey.id, survey);
+    } catch (error) {
+      showAlert(
+        "Refresh failed",
+        error instanceof Error ? error.message : "Unable to refresh Vocdoni results."
+      );
+    } finally {
+      setIsRefreshingResults(false);
+    }
+  };
 
   const handleExportCsv = async () => {
     if (isExporting) return;
@@ -330,6 +474,65 @@ export default function ManageSurveyPage() {
     }
   };
 
+  const endSurvey = async () => {
+    if (!survey || isEndingSurvey) {
+      return;
+    }
+
+    try {
+      setIsEndingSurvey(true);
+      const wallet = await getOrCreateDeviceWallet();
+      const client = await createVocdoniClient(wallet);
+      client.setElectionId(survey.id);
+      await client.endElection(survey.id);
+      await refreshVocdoniResults(survey.id, survey);
+      showAlert(
+        "Survey ended",
+        "The Vocdoni election was ended successfully.",
+        [
+          {
+            text: "OK",
+            onPress: () =>
+              router.replace({
+                pathname: "/(tabs)/mySurveys",
+                params: { tab: "created" },
+              }),
+          },
+        ]
+      );
+    } catch (error) {
+      showAlert(
+        "End failed",
+        error instanceof Error ? error.message : "Unable to end this survey on Vocdoni."
+      );
+    } finally {
+      setIsEndingSurvey(false);
+    }
+  };
+
+  const handleEndSurvey = () => {
+    if (survey.status === "results" || vocdoniStatus === "ENDED" || vocdoniStatus === "RESULTS") {
+      showAlert("Survey already ended", "This Vocdoni election is already ended.");
+      return;
+    }
+
+    if (Platform.OS === "web") {
+      if (typeof window !== "undefined" && window.confirm("End this survey now? Voters will no longer be able to submit votes.")) {
+        endSurvey();
+      }
+      return;
+    }
+
+    Alert.alert(
+      "End survey?",
+      "Voters will no longer be able to submit votes. This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "End Survey", style: "destructive", onPress: endSurvey },
+      ]
+    );
+  };
+
   return (
     <SafeAreaView style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -352,7 +555,9 @@ export default function ManageSurveyPage() {
 
           <View style={styles.livePill}>
             <View style={styles.liveDot} />
-            <Text style={styles.liveText}>{survey.status === "results" ? "CLOSED" : "LIVE"} - {categoryLabel}</Text>
+            <Text style={styles.liveText}>
+              {survey.status === "results" ? "CLOSED" : "LIVE"} - {vocdoniStatus ?? categoryLabel}
+            </Text>
           </View>
 
           <View style={styles.statsRow}>
@@ -384,6 +589,60 @@ export default function ManageSurveyPage() {
               Closes {closesLabel}{daysRemaining > 0 ? ` - ${daysRemaining} days remaining` : ""}
             </Text>
           </View>
+        </View>
+
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Live Results</Text>
+            <Pressable
+              onPress={handleRefreshResults}
+              disabled={isRefreshingResults}
+              style={({ pressed }) => [
+                styles.linkButton,
+                pressed && !isRefreshingResults && styles.linkButtonPressed,
+                isRefreshingResults && styles.linkButtonDisabled,
+              ]}
+            >
+              <Text style={styles.linkText}>{isRefreshingResults ? "Refreshing..." : "Refresh"}</Text>
+            </Pressable>
+          </View>
+
+          {questionResults.length > 0 ? (
+            <View style={styles.resultsContent}>
+              {questionResults.map((question) => (
+                <View key={question.id} style={styles.resultQuestion}>
+                  <View style={styles.resultQuestionHeader}>
+                    <Text style={styles.resultQuestionTitle}>{question.title}</Text>
+                    <Text style={styles.resultQuestionTotal}>{question.totalVotes} votes</Text>
+                  </View>
+
+                  {question.choices.length > 0 ? (
+                    question.choices.map((choice) => (
+                      <View key={choice.id} style={styles.resultChoice}>
+                        <View style={styles.resultChoiceHeader}>
+                          <Text style={styles.resultChoiceLabel}>{choice.label}</Text>
+                          <Text style={styles.resultChoiceValue}>
+                            {choice.votes} ({choice.percent}%)
+                          </Text>
+                        </View>
+                        <View style={styles.resultBarTrack}>
+                          <View style={[styles.resultBarFill, { width: `${choice.percent}%` }]} />
+                        </View>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={styles.emptyResultsText}>No choices found for this question.</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptyResults}>
+              <Text style={styles.emptyResultsText}>
+                No result rows returned yet. Refresh after votes are submitted.
+              </Text>
+            </View>
+          )}
         </View>
 
         <View style={styles.sectionCard}>
@@ -451,9 +710,17 @@ export default function ManageSurveyPage() {
           <MaterialIcons name="share" size={15} color={palette.primaryDark} />
           <Text style={styles.shareText}>Share</Text>
         </Pressable>
-        <Pressable style={({ pressed }) => [styles.endButton, pressed && styles.endButtonPressed]}>
+        <Pressable
+          disabled={isEndingSurvey}
+          onPress={handleEndSurvey}
+          style={({ pressed }) => [
+            styles.endButton,
+            pressed && !isEndingSurvey && styles.endButtonPressed,
+            isEndingSurvey && styles.endButtonDisabled,
+          ]}
+        >
           <MaterialIcons name="cancel" size={15} color={palette.warning} />
-          <Text style={styles.endText}>End Survey</Text>
+          <Text style={styles.endText}>{isEndingSurvey ? "Ending..." : "End Survey"}</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -636,6 +903,71 @@ const styles = StyleSheet.create({
     backgroundColor: palette.white,
     paddingBottom: 4,
   },
+  resultsContent: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 14,
+  },
+  resultQuestion: {
+    gap: 10,
+  },
+  resultQuestionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  resultQuestionTitle: {
+    flex: 1,
+    color: palette.primaryDark,
+    fontSize: 13,
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+  resultQuestionTotal: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  resultChoice: {
+    gap: 5,
+  },
+  resultChoiceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  resultChoiceLabel: {
+    flex: 1,
+    color: palette.textPrimary,
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  resultChoiceValue: {
+    color: palette.textSecondary,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  resultBarTrack: {
+    height: 7,
+    borderRadius: 999,
+    backgroundColor: palette.surfaceMuted,
+    overflow: "hidden",
+  },
+  resultBarFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: palette.primary,
+  },
+  emptyResults: {
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  emptyResultsText: {
+    color: palette.textSecondary,
+    fontSize: 13,
+    lineHeight: 19,
+  },
   sectionHeader: {
     height: 40,
     borderBottomWidth: 1,
@@ -773,6 +1105,9 @@ const styles = StyleSheet.create({
   endButtonPressed: {
     backgroundColor: palette.warningLight,
     transform: [{ scale: 0.985 }],
+  },
+  endButtonDisabled: {
+    opacity: 0.6,
   },
   endText: {
     fontSize: 14,

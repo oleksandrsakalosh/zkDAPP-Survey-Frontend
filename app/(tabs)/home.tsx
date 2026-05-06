@@ -15,10 +15,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import CompletedSurveyCard from "@/components/completedSurveyCard";
 import SurveyCard from "@/components/surveyCard";
 import type { ParticipatedSurveySummary, SurveyCardData, SurveySummary } from "@/domain/models";
+import {
+    getMyCreatedElections,
+    getMyRegisteredElections,
+    getUnstartedContractElections,
+} from "@/services/contractService";
 import { useEligibilityProfile } from "@/app/hooks/useEligibilityProfile";
 import { palette } from "@/theme/palette";
+import { ChainElection, ContractElectionStatus } from "@/types/election";
 import { checkEligibility } from "@/utils/checkEligibility";
-import { RegisteredSurveyFeedItem, loadRegisteredSurveyFeed } from "@/utils/registry/feed";
+import { loadOrFetchElectionMetadataMap, StoredElectionMetadata } from "@/utils/electionMetadataStore";
+import { createVocdoniClient } from "@/utils/vocdoni/sdk";
+import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
 import { useDeviceWallet } from "@/utils/vocdoni/WalletProvider";
 
 function formatShortDate(dateIso?: string | null) {
@@ -60,13 +68,118 @@ function EmptySection({ text }: { text: string }) {
     );
 }
 
-const mapFeedItemToParticipated = (item: RegisteredSurveyFeedItem): ParticipatedSurveySummary => ({
-    id: item.registry.electionId,
-    title: item.detail.title,
-    category: item.detail.categories[0]?.label ?? "General",
+const sortByCreatedDesc = (a: ChainElection, b: ChainElection) => b.createdAt - a.createdAt;
+
+const sortByStartedOrCreatedDesc = (a: ChainElection, b: ChainElection) =>
+    (b.startedAt || b.createdAt) - (a.startedAt || a.createdAt);
+
+const isChainElectionExpired = (election: ChainElection) => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    return election.endDate > 0 && election.endDate <= nowSeconds;
+};
+
+const isVocdoniCompletedStatus = (status?: string | null) => {
+    const normalized = String(status ?? "").trim().toUpperCase();
+    return (
+        normalized === "ENDED" ||
+        normalized === "CLOSED" ||
+        normalized === "RESULTS" ||
+        normalized === "CANCELED" ||
+        normalized === "CANCELLED" ||
+        normalized === "ARCHIVED"
+    );
+};
+
+const isReadyToStart = (election: ChainElection) => {
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const maxReached = election.maxVoters > 0 && election.registeredVoters >= election.maxVoters;
+    const startReached = election.startDate === 0 || nowSeconds >= election.startDate;
+    return maxReached || startReached;
+};
+
+const mapChainElectionToSurveySummary = (
+    election: ChainElection,
+    stored?: StoredElectionMetadata
+): SurveySummary => {
+    const metadata = stored?.metadata;
+    const eligibility = stored?.eligibility;
+    const category = metadata?.category || "On-chain";
+    const startDateIso =
+        metadata?.startDate ??
+        (election.startDate > 0 ? new Date(election.startDate * 1000).toISOString() : undefined);
+    const endDateIso =
+        metadata?.endDate ??
+        (election.endDate > 0 ? new Date(election.endDate * 1000).toISOString() : undefined);
+    const isStarted = election.status === ContractElectionStatus.Started;
+
+    return {
+        id: isStarted ? election.vocdoniElectionId || `chain-${election.id}` : `chain-${election.id}`,
+        title: metadata?.title || `On-chain survey #${election.id}`,
+        description:
+            metadata?.description ||
+            (isStarted
+                ? `Started on Vocdoni as ${election.vocdoniElectionId || "pending id"}.`
+                : "Registered on the smart contract and waiting for Vocdoni start."),
+        status: isStarted ? "active" : "draft",
+        categories: [
+            {
+                id: category.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "on-chain",
+                label: category,
+            },
+        ],
+        tags: metadata?.tags.map((tag) => ({
+            id: tag.toLowerCase().replace(/[^a-z0-9]+/g, "-") || tag,
+            label: tag,
+        })),
+        estimatedMinutes: Math.max(1, metadata?.questions.length || 1),
+        progress: {
+            responseCount: election.registeredVoters,
+            targetResponses: election.maxVoters || election.registeredVoters,
+        },
+        eligibility: {
+            decision: "verification_required",
+            matchedRequirements: [],
+            failedRequirements: [],
+            checkedAt: new Date().toISOString(),
+        },
+        requirements: eligibility?.requirements ?? [],
+        timeInfo: {
+            opensAt: startDateIso,
+            closesAt: endDateIso,
+            isOpen: isStarted,
+            displayLabel: startDateIso ? `Starts ${new Date(startDateIso).toLocaleString()}` : "Can start anytime",
+        },
+    };
+};
+
+const mapChainElectionToSurveyCard = (
+    election: ChainElection,
+    stored?: StoredElectionMetadata
+): SurveyCardData => {
+    const summary = mapChainElectionToSurveySummary(election, stored);
+    const metadata = stored?.metadata;
+
+    return {
+        ...summary,
+        id: `chain-${election.id}`,
+        listVariant: "available",
+        questions: metadata?.questions ?? [],
+        primaryAction: "details",
+        primaryActionLabel: "Register",
+    };
+};
+
+const mapChainElectionToParticipated = (
+    election: ChainElection,
+    stored?: StoredElectionMetadata
+): ParticipatedSurveySummary => ({
+    id: election.vocdoniElectionId || `chain-${election.id}`,
+    title: stored?.metadata.title || `On-chain survey #${election.id}`,
+    category: stored?.metadata.category || "On-chain",
     votedAt:
-        item.detail.timeInfo?.opensAt ??
-        new Date(item.registry.createdAt * 1000).toISOString(),
+        election.startedAt > 0
+            ? new Date(election.startedAt * 1000).toISOString()
+            : new Date().toISOString(),
 });
 
 export default function Home() {
@@ -74,7 +187,11 @@ export default function Home() {
     const { walletAddress, isLoading: isWalletLoading } = useDeviceWallet();
     const { profile } = useEligibilityProfile();
 
-    const [feedItems, setFeedItems] = useState<RegisteredSurveyFeedItem[]>([]);
+    const [createdElections, setCreatedElections] = useState<ChainElection[]>([]);
+    const [startedCreatedElections, setStartedCreatedElections] = useState<ChainElection[]>([]);
+    const [votedElections, setVotedElections] = useState<ChainElection[]>([]);
+    const [availableElections, setAvailableElections] = useState<ChainElection[]>([]);
+    const [metadataByElectionId, setMetadataByElectionId] = useState<Record<number, StoredElectionMetadata>>({});
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -86,14 +203,83 @@ export default function Home() {
                 setIsRefreshing(true);
             }
 
-            const nextFeed = await loadRegisteredSurveyFeed({
-                excludeClosed: false,
-                excludeVoted: false,
-            });
-            setFeedItems(nextFeed);
+            const [nextCreated, nextRegistered, nextUnstarted] = await Promise.all([
+                getMyCreatedElections(),
+                getMyRegisteredElections(),
+                getUnstartedContractElections(),
+            ]);
+            const wallet = await getOrCreateDeviceWallet();
+            const vocdoniClient = await createVocdoniClient(wallet);
+
+            const fetchableStartedCreated: ChainElection[] = [];
+            for (const election of nextCreated) {
+                if (election.status !== ContractElectionStatus.Started || !election.vocdoniElectionId) {
+                    continue;
+                }
+
+                try {
+                    vocdoniClient.setElectionId(election.vocdoniElectionId);
+                    const vocdoniElection = await vocdoniClient.fetchElection(election.vocdoniElectionId);
+                    if (!isVocdoniCompletedStatus(String(vocdoniElection?.status ?? ""))) {
+                        fetchableStartedCreated.push(election);
+                    }
+                } catch (error) {
+                    console.warn("[home] created:vocdoni-check:miss", {
+                        electionId: election.id,
+                        vocdoniElectionId: election.vocdoniElectionId,
+                        error: error instanceof Error ? error.message : error,
+                    });
+                }
+            }
+
+            const votedRegistered: ChainElection[] = [];
+            for (const election of nextRegistered) {
+                if (election.status !== ContractElectionStatus.Started || !election.vocdoniElectionId) {
+                    continue;
+                }
+
+                try {
+                    vocdoniClient.setElectionId(election.vocdoniElectionId);
+                    await vocdoniClient.fetchElection(election.vocdoniElectionId);
+                    const voteId = await vocdoniClient.hasAlreadyVoted();
+                    if (voteId) {
+                        votedRegistered.push(election);
+                    }
+                } catch (error) {
+                    console.warn("[home] participated:vocdoni-check:miss", {
+                        electionId: election.id,
+                        vocdoniElectionId: election.vocdoniElectionId,
+                        error: error instanceof Error ? error.message : error,
+                    });
+                }
+            }
+
+            const registeredIds = new Set(nextRegistered.map((election) => election.id));
+            const available = nextUnstarted.filter(
+                (election) =>
+                    !isChainElectionExpired(election) &&
+                    !registeredIds.has(election.id) &&
+                    election.creator.toLowerCase() !== wallet.address.toLowerCase() &&
+                    (election.maxVoters === 0 || election.registeredVoters < election.maxVoters)
+            );
+            const metadataMap = await loadOrFetchElectionMetadataMap([
+                ...nextCreated,
+                ...nextRegistered,
+                ...available,
+            ]);
+
+            setCreatedElections(nextCreated);
+            setStartedCreatedElections(fetchableStartedCreated);
+            setVotedElections(votedRegistered);
+            setAvailableElections(available);
+            setMetadataByElectionId(metadataMap);
         } catch (error) {
             console.error("[home] dashboard:load:error", error);
-            setFeedItems([]);
+            setCreatedElections([]);
+            setStartedCreatedElections([]);
+            setVotedElections([]);
+            setAvailableElections([]);
+            setMetadataByElectionId({});
         } finally {
             if (mode === "initial") {
                 setIsLoading(false);
@@ -111,49 +297,67 @@ export default function Home() {
         loadDashboard();
     }, [isWalletLoading, loadDashboard, walletAddress]);
 
-    const myCreatedItems = useMemo(
-        () =>
-            walletAddress
-                ? feedItems.filter(
-                    (item) => item.registry.creator.toLowerCase() === walletAddress.toLowerCase()
-                )
-                : [],
-        [feedItems, walletAddress]
+    const activeElection = useMemo(
+        () => [...startedCreatedElections].sort(sortByStartedOrCreatedDesc)[0],
+        [startedCreatedElections]
     );
 
-    const votedItems = useMemo(
-        () => feedItems.filter((item) => item.detail.hasVoted === true).slice(0, 3),
-        [feedItems]
+    const pendingStartElection = useMemo(
+        () =>
+            createdElections
+                .filter(
+                    (election) =>
+                        !isChainElectionExpired(election) &&
+                        election.status === ContractElectionStatus.Created
+                )
+                .sort(sortByCreatedDesc)[0],
+        [createdElections]
+    );
+
+    const activeSurvey = useMemo<SurveySummary | undefined>(
+        () =>
+            activeElection
+                ? mapChainElectionToSurveySummary(activeElection, metadataByElectionId[activeElection.id])
+                : undefined,
+        [activeElection, metadataByElectionId]
+    );
+
+    const pendingStartSurvey = useMemo<SurveySummary | undefined>(
+        () =>
+            pendingStartElection
+                ? mapChainElectionToSurveySummary(
+                    pendingStartElection,
+                    metadataByElectionId[pendingStartElection.id]
+                )
+                : undefined,
+        [metadataByElectionId, pendingStartElection]
+    );
+
+    const recentlyParticipated = useMemo<ParticipatedSurveySummary[]>(
+        () =>
+            [...votedElections]
+                .sort(sortByStartedOrCreatedDesc)
+                .slice(0, 1)
+                .map((election) =>
+                    mapChainElectionToParticipated(election, metadataByElectionId[election.id])
+                ),
+        [metadataByElectionId, votedElections]
     );
 
     const availableForYou = useMemo<SurveyCardData[]>(
         () =>
-            walletAddress
-                ? feedItems
-                    .filter(
-                        (item) =>
-                            item.registry.creator.toLowerCase() !== walletAddress.toLowerCase() &&
-                            item.detail.timeInfo?.isOpen !== false &&
-                            item.detail.hasVoted !== true
-                    )
-                    .map((item) => ({
-                        ...item.card,
-                        eligibility: checkEligibility(item.card.requirements ?? [], profile),
-                    }))
-                    .filter((survey) => survey.eligibility?.decision === "qualify")
-                    .slice(0, 1)
-                : [],
-        [feedItems, profile, walletAddress]
-    );
-
-    const activeSurvey = useMemo<SurveySummary | undefined>(
-        () => myCreatedItems[0]?.detail,
-        [myCreatedItems]
-    );
-
-    const recentlyParticipated = useMemo<ParticipatedSurveySummary[]>(
-        () => votedItems.map(mapFeedItemToParticipated),
-        [votedItems]
+            availableElections
+                .map((election) =>
+                    mapChainElectionToSurveyCard(election, metadataByElectionId[election.id])
+                )
+                .map((survey) => ({
+                    ...survey,
+                    eligibility: checkEligibility(survey.requirements ?? [], profile),
+                }))
+                .filter((survey) => survey.eligibility?.decision === "qualify")
+                .sort((a, b) => a.title.localeCompare(b.title))
+                .slice(0, 1),
+        [availableElections, metadataByElectionId, profile]
     );
 
     const activeResponses = activeSurvey?.progress?.responseCount ?? 0;
@@ -253,6 +457,72 @@ export default function Home() {
                         )}
 
                         <SectionHeader
+                            title="Pending Start Survey"
+                            action="View pending"
+                            onPress={() =>
+                                router.push({
+                                    pathname: "/(tabs)/mySurveys",
+                                    params: { tab: "pending" },
+                                })
+                            }
+                        />
+
+                        {pendingStartSurvey && pendingStartElection ? (
+                            <View style={styles.pendingCard}>
+                                <View style={styles.pendingCardHeader}>
+                                    <View style={styles.pendingTitleBlock}>
+                                        <Text style={styles.pendingTitle}>{pendingStartSurvey.title}</Text>
+                                        <Text style={styles.pendingSubtitle}>
+                                            {pendingStartSurvey.categories[0]?.label ?? "General"}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.pendingBadge}>
+                                        <Text style={styles.pendingBadgeText}>
+                                            {isReadyToStart(pendingStartElection) ? "Ready" : "Pending"}
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                <View style={styles.metricsRowDark}>
+                                    <View style={styles.metricItemDark}>
+                                        <Text style={styles.metricValueDark}>
+                                            {pendingStartElection.registeredVoters}
+                                        </Text>
+                                        <Text style={styles.metricLabelDark}>Registered</Text>
+                                    </View>
+                                    <View style={styles.metricItemDark}>
+                                        <Text style={styles.metricValueDark}>
+                                            {pendingStartElection.maxVoters || "Unlimited"}
+                                        </Text>
+                                        <Text style={styles.metricLabelDark}>Max voters</Text>
+                                    </View>
+                                    <View style={styles.metricItemDark}>
+                                        <Text style={styles.metricValueDark}>
+                                            {pendingStartSurvey.timeInfo?.opensAt
+                                                ? formatShortDate(pendingStartSurvey.timeInfo.opensAt)
+                                                : "Anytime"}
+                                        </Text>
+                                        <Text style={styles.metricLabelDark}>Start date</Text>
+                                    </View>
+                                </View>
+
+                                <Pressable
+                                    style={styles.pendingButton}
+                                    onPress={() =>
+                                        router.push({
+                                            pathname: "/(tabs)/mySurveys",
+                                            params: { tab: "pending" },
+                                        })
+                                    }
+                                >
+                                    <Text style={styles.pendingButtonText}>Open Pending Start</Text>
+                                </Pressable>
+                            </View>
+                        ) : (
+                            <EmptySection text="No contract surveys are waiting to be started." />
+                        )}
+
+                        <SectionHeader
                             title="Recently Participated"
                             action="See all"
                             onPress={() =>
@@ -271,6 +541,8 @@ export default function Home() {
                                     title={survey.title}
                                     category={survey.category ?? "General"}
                                     date={formatShortDate(survey.votedAt)}
+                                    actionLabel="View results"
+                                    onPress={(id) => { router.push(`/survey/results/${id}`); }}
                                 />
                             ))
                         ) : (
@@ -288,8 +560,11 @@ export default function Home() {
                                 <SurveyCard
                                     key={survey.id}
                                     survey={survey}
-                                    voteLabel="Details"
-                                    onVote={(id) => router.push(`/voting/${id}` as any)}
+                                    voteLabel="Register"
+                                    onVote={(id) => {
+                                        const electionId = Number(id.replace("chain-", ""));
+                                        router.push(`/register/${electionId}/eligibility` as any);
+                                    }}
                                 />
                             ))
                         ) : (
@@ -428,6 +703,80 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: "700",
         color: palette.primary,
+    },
+    pendingCard: {
+        backgroundColor: palette.white,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: palette.border,
+        padding: 14,
+        marginBottom: 16,
+        gap: 12,
+    },
+    pendingCardHeader: {
+        flexDirection: "row",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: 12,
+    },
+    pendingTitleBlock: {
+        flex: 1,
+        gap: 3,
+    },
+    pendingTitle: {
+        color: palette.primaryDark,
+        fontSize: 15,
+        fontWeight: "800",
+    },
+    pendingSubtitle: {
+        color: palette.textSecondary,
+        fontSize: 12,
+    },
+    pendingBadge: {
+        borderRadius: 999,
+        backgroundColor: palette.primaryNegative,
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+    },
+    pendingBadgeText: {
+        color: palette.primary,
+        fontSize: 12,
+        fontWeight: "800",
+    },
+    metricsRowDark: {
+        flexDirection: "row",
+        gap: 10,
+        flexWrap: "wrap",
+    },
+    metricItemDark: {
+        flex: 1,
+        minWidth: 90,
+        borderRadius: 12,
+        backgroundColor: palette.surfaceMuted,
+        padding: 10,
+    },
+    metricValueDark: {
+        color: palette.primaryDark,
+        fontSize: 14,
+        fontWeight: "800",
+    },
+    metricLabelDark: {
+        color: palette.textSecondary,
+        fontSize: 11,
+        fontWeight: "600",
+        marginTop: 3,
+    },
+    pendingButton: {
+        alignSelf: "flex-start",
+        backgroundColor: palette.primary,
+        borderRadius: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+    },
+    pendingButtonText: {
+        color: palette.white,
+        fontSize: 12,
+        fontWeight: "800",
     },
     emptySection: {
         borderRadius: 16,

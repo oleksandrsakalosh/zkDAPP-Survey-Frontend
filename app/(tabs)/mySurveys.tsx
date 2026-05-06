@@ -17,6 +17,7 @@ import {
     ParticipatedSurveySummary,
 } from "@/domain/models";
 import { palette } from "@/theme/palette";
+import { useFocusEffect } from "@react-navigation/native";
 import { router, useLocalSearchParams } from "expo-router";
 import {
     getMyCreatedElections,
@@ -39,16 +40,42 @@ const formatShortDate = (dateIso: string) =>
         day: "numeric",
     }).format(new Date(dateIso));
 
+type VocdoniElectionStats = {
+    status?: string | null;
+    voteCount?: number | null;
+};
+
+const normalizeVocdoniStatus = (status?: string | null) =>
+    String(status ?? "").trim().toUpperCase();
+
+const isVocdoniCompletedStatus = (status?: string | null) => {
+    const normalized = normalizeVocdoniStatus(status);
+    return (
+        normalized === "ENDED" ||
+        normalized === "CLOSED" ||
+        normalized === "RESULTS" ||
+        normalized === "CANCELED" ||
+        normalized === "CANCELLED" ||
+        normalized === "ARCHIVED"
+    );
+};
+
 const mapChainElectionToCreatedSurvey = (
     election: ChainElection,
-    stored?: StoredElectionMetadata
+    stored?: StoredElectionMetadata,
+    vocdoniStats?: VocdoniElectionStats
 ): CreatedSurveyCardData => {
     const metadata = stored?.metadata;
     const ended =
+        isVocdoniCompletedStatus(vocdoniStats?.status) ||
         election.endDate > 0 && election.endDate <= Math.floor(Date.now() / 1000);
     const endsAt =
         metadata?.endDate ??
         (election.endDate > 0 ? new Date(election.endDate * 1000).toISOString() : null);
+    const responseCount =
+        typeof vocdoniStats?.voteCount === "number" && Number.isFinite(vocdoniStats.voteCount)
+            ? vocdoniStats.voteCount
+            : election.registeredVoters;
 
     return {
         id: election.vocdoniElectionId || `chain-${election.id}`,
@@ -56,8 +83,8 @@ const mapChainElectionToCreatedSurvey = (
         category: metadata?.category || "On-chain",
         status: ended ? "results" : "active",
         endsAt: endsAt ? formatShortDate(endsAt) : null,
-        responsesCurrent: election.registeredVoters,
-        responsesTarget: election.maxVoters || election.registeredVoters,
+        responsesCurrent: responseCount,
+        responsesTarget: election.maxVoters || Math.max(responseCount, election.registeredVoters),
     };
 };
 
@@ -95,6 +122,7 @@ export default function MySurveys() {
     const [createdVocdoniElections, setCreatedVocdoniElections] = useState<ChainElection[]>([]);
     const [participatedChainElections, setParticipatedChainElections] = useState<ChainElection[]>([]);
     const [metadataByElectionId, setMetadataByElectionId] = useState<Record<number, StoredElectionMetadata>>({});
+    const [vocdoniStatsByElectionId, setVocdoniStatsByElectionId] = useState<Record<number, VocdoniElectionStats>>({});
     const [publishedExplorerUrls] = useState<Record<string, string>>({});
     const [publishedRegistryTxHashes] = useState<Record<string, string>>({});
     const [isRegistryLoading, setIsRegistryLoading] = useState(true);
@@ -120,6 +148,7 @@ export default function MySurveys() {
             const vocdoniClient = await createVocdoniClient(wallet);
 
             const fetchableCreated: ChainElection[] = [];
+            const nextVocdoniStatsByElectionId: Record<number, VocdoniElectionStats> = {};
             for (const election of nextChainElections) {
                 if (election.status !== ContractElectionStatus.Started || !election.vocdoniElectionId) {
                     continue;
@@ -127,7 +156,14 @@ export default function MySurveys() {
 
                 try {
                     vocdoniClient.setElectionId(election.vocdoniElectionId);
-                    await vocdoniClient.fetchElection(election.vocdoniElectionId);
+                    const vocdoniElection = await vocdoniClient.fetchElection(election.vocdoniElectionId);
+                    nextVocdoniStatsByElectionId[election.id] = {
+                        status: String(vocdoniElection?.status ?? ""),
+                        voteCount:
+                            typeof vocdoniElection?.voteCount === "number"
+                                ? vocdoniElection.voteCount
+                                : undefined,
+                    };
                     fetchableCreated.push(election);
                 } catch (error) {
                     console.warn("[my-surveys] created:vocdoni-check:miss", {
@@ -146,7 +182,14 @@ export default function MySurveys() {
 
                 try {
                     vocdoniClient.setElectionId(election.vocdoniElectionId);
-                    await vocdoniClient.fetchElection(election.vocdoniElectionId);
+                    const vocdoniElection = await vocdoniClient.fetchElection(election.vocdoniElectionId);
+                    nextVocdoniStatsByElectionId[election.id] = {
+                        status: String(vocdoniElection?.status ?? ""),
+                        voteCount:
+                            typeof vocdoniElection?.voteCount === "number"
+                                ? vocdoniElection.voteCount
+                                : undefined,
+                    };
                     const voteId = await vocdoniClient.hasAlreadyVoted();
                     if (voteId) {
                         votedRegistered.push(election);
@@ -164,6 +207,7 @@ export default function MySurveys() {
             setCreatedVocdoniElections(fetchableCreated);
             setParticipatedChainElections(votedRegistered);
             setMetadataByElectionId(metadataMap);
+            setVocdoniStatsByElectionId(nextVocdoniStatsByElectionId);
         } catch (error) {
             console.error("[my-surveys] registry:load:error", error);
         } finally {
@@ -171,13 +215,15 @@ export default function MySurveys() {
         }
     }, []);
 
-    useEffect(() => {
-        if (isWalletLoading || !walletAddress) {
-            return;
-        }
+    useFocusEffect(
+        useCallback(() => {
+            if (isWalletLoading || !walletAddress) {
+                return;
+            }
 
-        reloadMySurveys();
-    }, [isWalletLoading, reloadMySurveys, walletAddress]);
+            reloadMySurveys();
+        }, [isWalletLoading, reloadMySurveys, walletAddress])
+    );
 
     const handleRefresh = useCallback(async () => {
         setIsRefreshing(true);
@@ -191,9 +237,13 @@ export default function MySurveys() {
         }
 
         return createdVocdoniElections.map((election) =>
-            mapChainElectionToCreatedSurvey(election, metadataByElectionId[election.id])
+            mapChainElectionToCreatedSurvey(
+                election,
+                metadataByElectionId[election.id],
+                vocdoniStatsByElectionId[election.id]
+            )
         );
-    }, [createdVocdoniElections, metadataByElectionId, walletAddress]);
+    }, [createdVocdoniElections, metadataByElectionId, vocdoniStatsByElectionId, walletAddress]);
 
     const participatedSurveys = useMemo(() => {
         if (!walletAddress) {
@@ -359,6 +409,7 @@ export default function MySurveys() {
                         isRefreshing={isRefreshing}
                         isLoading={isRegistryLoading}
                         onRefresh={handleRefresh}
+                        onResults={(id) => { router.push(`/survey/results/${id}`); }}
                     />
                 )}
             </View>
