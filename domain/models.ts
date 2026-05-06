@@ -175,7 +175,6 @@ export interface ParticipatedSurveySummary {
   title: string;
   category: string;
   votedAt: ISODateString;
-  rewardStatus: RewardStatus;
   reward?: Money;
 }
 
