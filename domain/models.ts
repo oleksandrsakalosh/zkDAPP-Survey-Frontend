@@ -3,7 +3,7 @@ export type ISODateString = string;
 export type CurrencyCode = "USD" | "USDC" | "EUR" | "TOKEN" | string;
 
 export type SurveyStatus = "active" | "draft" | "results";
-export type RequirementType = "Age" | "Location" | "Education level" | "";
+export type RequirementType = "Age" | "Country" | "Region" | "District" | "Location" | "Education level" | "";
 export type QuestionType = "single_choice" | "multiple_choice";
 export type SortKey = "nameAsc";
 export type SurveyListVariant =

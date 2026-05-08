@@ -5,6 +5,7 @@ include "../../node_modules/circomlib/circuits/poseidon.circom";
 include "../../node_modules/circomlib/circuits/comparators.circom";
 include "./templates/findHashInLeaves.circom";
 include "./templates/merkleTreeVerifier.circom";
+include "./templates/matchAnyOf.circom";
 
 template MainCheck() {
     
@@ -15,8 +16,7 @@ template MainCheck() {
     signal input signatureS;
     signal input merkleRoot;        // signed merkle root (from zkp.merkleRoot)
 
-    signal input leaves[8];
-    signal input numLeaves;
+    signal input leaves[10];
 
     // = Attribute disclosures =
     signal input dobSalt;
@@ -27,12 +27,31 @@ template MainCheck() {
     signal input expKey;
     signal input expValue;
 
+    signal input countrySalt;
+    signal input countryKey;
+    signal input countryValue;
+    
+    signal input regionSalt;
+    signal input regionKey;
+    signal input regionValue;
+    
+    signal input districtSalt;
+    signal input districtKey;
+    signal input districtValue;
+
     // = Requirements (public) =
     signal input currentDate;       // verified on-chain
     signal input minAge;
 
+    signal input requiredCountry;
+    signal input allowedRegions[5];
+    signal input allowedDistricts[5];
+
     // = Enable/disable flags (public) =
     signal input enableAgeCheck;    // 1 = check age, 0 = skip
+    signal input enableCountryCheck;
+    signal input enableRegionCheck;
+    signal input enableDistrictCheck;
 
 
     // === ELIGIBILITY CHECKS===
@@ -50,6 +69,28 @@ template MainCheck() {
     expCheck.in[1] <== expValue;
     expCheck.out === 1;
 
+    // === Country check
+    component countryMatch = IsEqual();
+    countryMatch.in[0] <== countryValue;
+    countryMatch.in[1] <== requiredCountry;
+    signal countryValid <== enableCountryCheck * countryMatch.out + (1 - enableCountryCheck);
+    countryValid === 1;
+
+    // === Region check
+    component regionMatcher = MatchAnyOf(5);
+    regionMatcher.disclosedValue <== regionValue;
+    regionMatcher.allowedValues <== allowedRegions;
+    signal regionValid <== enableRegionCheck * regionMatcher.matched + (1 - enableRegionCheck);
+    regionValid === 1;
+
+
+    // === District check 
+    component districtMatcher = MatchAnyOf(5);
+    districtMatcher.disclosedValue <== districtValue;
+    districtMatcher.allowedValues <== allowedDistricts;
+    signal districtValid <== enableDistrictCheck * districtMatcher.matched + (1 - enableDistrictCheck);
+    districtValid === 1;
+
 
     // === MANDATORY CHECKS ===
 
@@ -66,7 +107,6 @@ template MainCheck() {
     // 2. Reconstruct merkle tree
     component merkleVerifier = MerkleTreeVerifier();
     merkleVerifier.leaves <== leaves;
-    merkleVerifier.numLeaves <== numLeaves;
     merkleVerifier.expectedRoot <== merkleRoot;
 
 
@@ -78,7 +118,7 @@ template MainCheck() {
     dobHasher.inputs[1] <== dobKey;
     dobHasher.inputs[2] <== dobValue;
 
-    component dobHashInLeaves = HashInLeaves(8);
+    component dobHashInLeaves = HashInLeaves(10);
     dobHashInLeaves.computedHash <== dobHasher.out;
     dobHashInLeaves.leaves <== leaves;
     signal dobHashValid <== enableAgeCheck * dobHashInLeaves.found + (1 - enableAgeCheck);
@@ -90,10 +130,46 @@ template MainCheck() {
     expHasher.inputs[1] <== expKey;
     expHasher.inputs[2] <== expValue;
 
-    component expHashInLeaves = HashInLeaves(8);
+    component expHashInLeaves = HashInLeaves(10);
     expHashInLeaves.computedHash <== expHasher.out;
     expHashInLeaves.leaves <== leaves;
     expHashInLeaves.found === 1;
+
+    // === Country check
+    component countryHasher = Poseidon(3);
+    countryHasher.inputs[0] <== countrySalt;
+    countryHasher.inputs[1] <== countryKey;
+    countryHasher.inputs[2] <== countryValue;
+
+    component countryHashInLeaves = HashInLeaves(10);
+    countryHashInLeaves.computedHash <== countryHasher.out;
+    countryHashInLeaves.leaves <== leaves;
+    signal countryHashValid <== enableCountryCheck * countryHashInLeaves.found + (1 - enableCountryCheck);
+    countryHashValid === 1;
+
+    // === Region check
+    component regionHasher = Poseidon(3);
+    regionHasher.inputs[0] <== regionSalt;
+    regionHasher.inputs[1] <== regionKey;
+    regionHasher.inputs[2] <== regionValue;
+    
+    component regionHashInLeaves = HashInLeaves(10);
+    regionHashInLeaves.computedHash <== regionHasher.out;
+    regionHashInLeaves.leaves <== leaves;
+    signal regionHashValid <== enableRegionCheck * regionHashInLeaves.found + (1 - enableRegionCheck);
+    regionHashValid === 1;
+
+    // === District check
+    component districtHasher = Poseidon(3);
+    districtHasher.inputs[0] <== districtSalt;
+    districtHasher.inputs[1] <== districtKey;
+    districtHasher.inputs[2] <== districtValue;
+    
+    component districtHashInLeaves = HashInLeaves(10);
+    districtHashInLeaves.computedHash <== districtHasher.out;
+    districtHashInLeaves.leaves <== leaves;
+    signal districtHashValid <== enableDistrictCheck * districtHashInLeaves.found + (1 - enableDistrictCheck);
+    districtHashValid === 1;
 }
 
 component main {public [
@@ -101,7 +177,14 @@ component main {public [
     merkleRoot, 
     currentDate, 
     minAge,
-    enableAgeCheck
+    enableAgeCheck,
+    requiredCountry,
+    enableCountryCheck,
+    allowedRegions,
+    enableRegionCheck,
+    allowedDistricts,
+    enableDistrictCheck
+
 ]} = MainCheck();
 
 
@@ -110,30 +193,58 @@ component main {public [
         "20819777127488100708022598367786075971449507556999841353307206018836784896341", 
         "14004583041878220981011147487899050448009418260081102041065039551201105990467"
         ],
-    "signatureR8": [
-        "5995360802070366241812812864979530611513382133006449066617720300837061823357", 
-        "2203655033909077539179184739301560741145241057979937897816103612658463814751"
-        ],
-    "signatureS": "1270517699732476589524071021497433259780990121416805424341003255058355857641",
-    "merkleRoot": "5619118809198186717025939132568580030341618483406948384977746823794628293080",
-    "dobValue": "19990101",
-    "currentDate": "20260427",
-    "minAge": "20",
-    "enableAgeCheck": "1",
-    "dobSalt": "3009555253",
-    "dobKey": "464737070780541271372901",
-    "expSalt": "3140829282",
+    "signatureR8":   [
+        "4607707142539924677576829828687272507018493067819599105440757198427656393634",
+        "20137000682881364481650893614337697166787930480924426070079520468082806583804"
+      ],
+    "signatureS": "2230484703645449467724691791809274653909034905049095886489572238154396189811",
+    "merkleRoot": "8161619990786128153215174694101380716338582200247621543323527496095677885183",
+    "dobValue": "0",
+    "currentDate": "20260507",
+    "minAge": "0",
+    "enableAgeCheck": "0",
+    "dobSalt": "0",
+    "dobKey": "0",
+    "expSalt": "1692001170",
     "expKey": "122670265392627131481158757",
     "expValue": "20300505",
     "leaves": [
-        "1750715785215183251078992993785381113287245862753112597004785050312478526212", 
-        "17730642392086886239562659265258605233228412548994667344458633753322474676377",
-        "18650170846649886357182385396113531609409262814024578456551615297653523677958",
-        "7940696320742643234005310170879451933655917977167062823570099739025673413676",
-        "19264448190612129652959067143651551938468048492647880296170747155059878779999",
-        "18815136004398032932931322566365588553644710752425662801104941539483710128212",
-        "2742950999648639021911747645035182407839208401894415429211122491019047566974",
+      "11464170690518982879143044305411778616735160829838878338452113211197051441413",
+      "18902202818330702731442491450555970296118919620307631184685586529474627459991",
+      "634364826890246444676161235546813465304999297316137322495724985228308286591",
+      "9507375595234464385405560614742655293506975136559231413320303752655967966295",
+      "2581796188849390040889462198357467329875304534960842852347095219444489743555",
+      "5268629651594286292702377094467431369139749967758253018308589054024309946264",
+      "6659840090562286167826448556204526522928216487449059340582632776140998285327",
+      "11799354992172553032178739447139972556241860133978353151345874908957015427444",
+      "10578445365761664276179525837274288422442043320094562721085834583290849193490",
+      "2946285278122429701131454198713258828130621471604635036293317808446152102237"
+    ],
+    "requiredCountry": "21323",
+    "enableCountryCheck": "1",
+    "allowedRegions": [
+        "378966184785361306377934625699680629223907811690",
+        "0",
+        "0",
+        "0",
         "0"
-        ],
-    "numLeaves": "7"
+    ],
+    "enableRegionCheck": "1",
+    "allowedDistricts": [
+        "344667737213923724289161807518065505",
+        "20940694574001515",
+        "20940694574001515",
+        "20940694574001515",
+        "0"
+    ],
+    "enableDistrictCheck": "1",
+    "countrySalt": "3056353236",
+    "countryKey": "30773761292701632005028144229",
+    "countryValue": "21323",
+    "regionSalt": "2897907761",
+    "regionKey": "125779852226414",
+    "regionValue": "378966184785361306377934625699680629223907811690",
+    "districtSalt": "1204018349",
+    "districtKey": "7235441220320322420",
+    "districtValue": "344667737213923724289161807518065505"
 } */

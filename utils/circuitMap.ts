@@ -8,7 +8,10 @@ import { RequirementType } from "@/domain/models";
  */
 export const REQUIREMENT_CIRCUIT_MAP: Record<RequirementType, string> = {
   Age: "eligibility",
-  Location: "location", // Future: to be implemented
+  Country: "eligibility",
+  Region: "eligibility",
+  District: "eligibility",
+  Location: "eligibility",
   "Education level": "education", // Future: to be implemented
   "": "",
 };

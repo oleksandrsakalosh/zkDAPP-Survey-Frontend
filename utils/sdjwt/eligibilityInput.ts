@@ -6,7 +6,7 @@ export interface EligibilityCircuitInput {
     signatureR8: [string, string];
     signatureS: string;
     merkleRoot: string;
-    leaves: [string, string, string, string, string, string, string, string];
+    leaves: [string, string, string, string, string, string, string, string, string, string, string];
     numLeaves: string;
     dobSalt: string;
     dobKey: string;
@@ -48,9 +48,9 @@ function toStringOrZero(value: unknown): string {
     return asString ? asString : "0";
 }
 
-function toEightElementTuple(values: string[]): EligibilityCircuitInput["leaves"] {
-    const padded = values.slice(0, 8);
-    while (padded.length < 8) {
+function toElevenElementTuple(values: string[]): EligibilityCircuitInput["leaves"] {
+    const padded = values.slice(0, 11);
+    while (padded.length < 11) {
         padded.push("0");
     }
 
@@ -103,8 +103,8 @@ function resolveCircuitIdentity(parsed: ParsedSdJwtResult) {
         signatureR8: [toStringOrZero(r8[0]), toStringOrZero(r8[1])] as [string, string],
         signatureS: toStringOrZero(signature.s),
         merkleRoot: toStringOrZero(zkp.merkleRoot),
-        leaves: toEightElementTuple(leaves.map((leaf) => toStringOrZero(leaf))),
-        numLeaves: String(Math.min(leaves.length, 8)),
+        leaves: toElevenElementTuple(leaves.map((leaf) => toStringOrZero(leaf))),
+        numLeaves: String(Math.min(leaves.length, 11)),
     };
 }
 
