@@ -297,13 +297,13 @@ const sanitizeChoices = (question: ElectionMetadata["questions"][number]) =>
   }));
 
 const resolveMaxCount = (metadata: ElectionMetadata) =>
-  metadata.questions.reduce((max, question) => {
+  metadata.questions.reduce((total, question) => {
     if (question.type === "multiple_choice") {
-      return Math.max(max, question.options?.length ?? 1);
+      return total + Math.max(1, question.options?.length ?? 1);
     }
 
-    return Math.max(max, 1);
-  }, 1);
+    return total + 1;
+  }, 0);
 
 const resolveEndDateMs = (metadata?: ElectionMetadata) => {
   if (metadata?.endDate) {

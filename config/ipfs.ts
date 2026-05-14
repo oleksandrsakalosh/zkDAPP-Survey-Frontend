@@ -3,4 +3,4 @@ export const IPFS_API_KEY =
 
 export const IPFS_GATEWAY_URL =
   process.env.EXPO_PUBLIC_IPFS_GATEWAY_URL?.trim() ||
-  "https://conservative-lungfish-gj815.lighthouseweb3.xyz/ipfs";
+  "https://worried-chimpanzee-kojl1.lighthouseweb3.xyz/ipfs";

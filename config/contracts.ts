@@ -2,7 +2,7 @@ export const SEPOLIA_CHAIN_ID = 11155111;
 
 export const SURVEY_MANAGER_CONTRACT_ADDRESS =
   process.env.EXPO_PUBLIC_SURVEY_MANAGER_ADDRESS?.trim() ||
-  "0xB3280be5Ab70CB3C9cC38D3929D44Dba54883dE2";
+  "0x22a2905bb3542b460a0067927cd5fc494bbf81d7";
 
 export const SURVEY_MANAGER_RPC_URL =
   process.env.EXPO_PUBLIC_SURVEY_MANAGER_RPC_URL?.trim() ||
@@ -10,7 +10,7 @@ export const SURVEY_MANAGER_RPC_URL =
   "https://ethereum-sepolia-rpc.publicnode.com";
 
 export const SURVEY_MANAGER_DEPLOYMENT_BLOCK = Number(
-  process.env.EXPO_PUBLIC_SURVEY_MANAGER_DEPLOYMENT_BLOCK ?? 10751604
+  process.env.EXPO_PUBLIC_SURVEY_MANAGER_DEPLOYMENT_BLOCK ?? 10815562
 );
 
 export const SURVEY_MANAGER_ABI = [

@@ -306,6 +306,22 @@ export const voteSurvey = async (electionId: string, choices: (number | bigint)[
   }
 
   const election = await client.fetchElection(electionId);
+  const maxCount = Number(election?.voteType?.maxCount ?? 0);
+
+  console.log('[voteSurvey] vocdoniVoteType', {
+    electionId,
+    maxCount,
+    maxValue: election?.voteType?.maxValue,
+    choiceCount: choices.length,
+    choices,
+  });
+
+  if (maxCount > 0 && choices.length > maxCount) {
+    throw new Error(
+      `This Vocdoni election was started with maxCount=${maxCount}, but this survey requires ${choices.length} selected answer${choices.length === 1 ? '' : 's'}. Start a new Vocdoni election after updating the app so maxCount matches the number of survey answers.`
+    );
+  }
+
   const censusProof = await fetchCensusProofForWallet({
     client,
     censusId: election.census.censusId,
