@@ -72,7 +72,7 @@ export const uploadElectionMetadataDocument = async (document: ElectionMetadataD
       message = text || message;
     }
 
-    throw new Error(message);
+    throw new Error(`Lighthouse/IPFS metadata upload failed: ${message}`);
   }
 
   const payload = await response.json();
