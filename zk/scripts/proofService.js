@@ -81,8 +81,8 @@ function toPublicErrorMessage(error, fallbackMessage) {
 
 function normalizeProofError(error) {
   const message = error instanceof Error ? error.message : String(error || '');
-  if (message.includes('Assert Failed') || message.includes('Error in template AgeCheck')) {
-    return 'Not eligible: credential does not satisfy the age requirement.';
+  if (message.includes('Assert Failed') || message.includes('Error in template')) {
+    return 'Not eligible: credential does not satisfy the requirements.';
   }
   return message || 'Proof generation failed.';
 }

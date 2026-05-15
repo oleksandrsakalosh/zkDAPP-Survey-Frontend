@@ -16,9 +16,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { palette } from "@/theme/palette";
 import { useVoting } from "@/utils/VotingContext";
-import { buildEligibilityCircuitInputFromToken, EligibilityCircuitInput } from "@/utils/sdjwt/eligibilityInput";
+import { buildEligibilityCircuitInputFromToken, EligibilityCircuitInput, parseValueForCircuit } from "@/utils/sdjwt/eligibilityInput";
 import {
-  CREDENTIAL_TYPES,
   CredentialType,
   getCredentialTypeConfig,
 } from "@/utils/credentialConfig";
@@ -29,6 +28,7 @@ import {
 } from "@/utils/requirementAttributeMap";
 import { RequirementType, SurveyDetail } from "@/domain/models";
 import { loadRegisteredSurveyDetail } from "@/utils/registry/feed";
+import { getResidencePermitCountryByLabel } from "@/utils/zk/residencePermitLocations";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -87,16 +87,31 @@ function toMoproInputs(input: EligibilityCircuitInput): Record<string, string[]>
     signatureS: [input.signatureS],
     merkleRoot: [input.merkleRoot],
     leaves: [...input.leaves],
-    numLeaves: [input.numLeaves],
     dobSalt: [input.dobSalt],
     dobKey: [input.dobKey],
     dobValue: [input.dobValue],
     expSalt: [input.expSalt],
     expKey: [input.expKey],
     expValue: [input.expValue],
+    countrySalt: [input.countrySalt],
+    countryKey: [input.countryKey],
+    countryValue: [input.countryValue],
+    regionSalt: [input.regionSalt],
+    regionKey: [input.regionKey],
+    regionValue: [input.regionValue],
+    districtSalt: [input.districtSalt],
+    districtKey: [input.districtKey],
+    districtValue: [input.districtValue],
     currentDate: [input.currentDate],
     minAge: [input.minAge],
     enableAgeCheck: [input.enableAgeCheck],
+    // v2 public inputs
+    requiredCountry: [input.requiredCountry],
+    enableCountryCheck: [input.enableCountryCheck],
+    allowedRegions: [...input.allowedRegions],
+    enableRegionCheck: [input.enableRegionCheck],
+    allowedDistricts: [...input.allowedDistricts],
+    enableDistrictCheck: [input.enableDistrictCheck],
   };
 }
 
@@ -126,17 +141,55 @@ function getRequestedClaimsForCredential(
 
   const candidates = new Set(
     requirements.flatMap((requirement) =>
-      getAttributeCandidatesForRequirement(requirement.type),
+      getAttributeCandidatesForRequirement(canonicalRequirementType(requirement.type)),
     ),
   );
 
+  const hasLocationRequirement = requirements.some((req) =>
+    LOCATION_REQUIREMENT_TYPES.includes(canonicalRequirementType(req.type)),
+  );
+  const hasAgeRequirement = requirements.some((req) => canonicalRequirementType(req.type) === "Age");
+
   return config.attributes
     .map((attribute) => attribute.id)
-    .filter((attributeId) => candidates.has(attributeId) || attributeId === "expiry_date");
+    .filter(
+      (attributeId) =>
+        candidates.has(attributeId) ||
+        (attributeId === "expiry_date" && (hasAgeRequirement || hasLocationRequirement)),
+    );
+}
+
+const LOCATION_REQUIREMENT_TYPES: RequirementType[] = ["Country", "Region", "District", "Location"];
+
+function canonicalRequirementType(type: string): RequirementType {
+  const typeKey = normalizeRequirementTypeKey(type);
+  if (typeKey === "age") return "Age";
+  if (typeKey === "country") return "Country";
+  if (typeKey === "region") return "Region";
+  if (typeKey === "district") return "District";
+  if (typeKey === "location") return "Location";
+  if (typeKey === "educationlevel") return "Education level";
+  return "";
+}
+
+function hasLocationRequirement(requirements: { type: RequirementType }[]): boolean {
+  return requirements.some((requirement) => LOCATION_REQUIREMENT_TYPES.includes(canonicalRequirementType(requirement.type)));
+}
+
+function resolveCredentialTypeForRequirements(requirements: { type: RequirementType }[]): CredentialType {
+  if (hasLocationRequirement(requirements)) {
+    return "residence_permit";
+  }
+
+  if (requirements.some((requirement) => canonicalRequirementType(requirement.type) === "Age")) {
+    return "passport";
+  }
+
+  return "passport";
 }
 
 function resolveAgeRequirement(requirements: { type: string; value: string }[]): { enableAgeCheck: string; minAge: string } {
-  const ageRequirement = requirements.find((requirement) => requirement.type === "Age");
+  const ageRequirement = requirements.find((requirement) => canonicalRequirementType(requirement.type) === "Age");
   if (!ageRequirement) {
     return { enableAgeCheck: "0", minAge: "0" };
   }
@@ -147,6 +200,83 @@ function resolveAgeRequirement(requirements: { type: string; value: string }[]):
   }
 
   return { enableAgeCheck: "1", minAge: String(minAge) };
+}
+
+function padToFive(encoded: string[]): [string, string, string, string, string] {
+  const padded = encoded.slice(0, 5);
+  while (padded.length < 5) padded.push("0");
+  return padded as [string, string, string, string, string];
+}
+
+function normalizeRequirementTypeKey(type: string): string {
+  return String(type ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function parseLocationParts(value: string): { country: string; region: string; district: string } {
+  const [country = "", region = "", district = ""] = String(value ?? "")
+    .split(/\s*\/\s*/)
+    .map((part) => part.trim());
+
+  return { country, region, district };
+}
+
+function parseMultiValue(value: string): string[] {
+  return String(value ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function encodeCountryForCircuit(countryLabelOrCode: string): string {
+  const countryValue = countryLabelOrCode.trim();
+  const code = getResidencePermitCountryByLabel(countryValue)?.code ?? countryValue;
+  return parseValueForCircuit(code);
+}
+
+function resolveLocationRequirementInputs(requirements: { type: string; value: string }[]) {
+  let requiredCountry = "0";
+  let enableCountryCheck = "0";
+  let allowedRegions: [string, string, string, string, string] = ["0", "0", "0", "0", "0"];
+  let enableRegionCheck = "0";
+  let allowedDistricts: [string, string, string, string, string] = ["0", "0", "0", "0", "0"];
+  let enableDistrictCheck = "0";
+
+  for (const requirement of requirements) {
+    const typeKey = normalizeRequirementTypeKey(requirement.type);
+    const location = parseLocationParts(requirement.value);
+
+    if ((typeKey === "country" || typeKey === "location") && location.country) {
+      requiredCountry = encodeCountryForCircuit(location.country);
+      enableCountryCheck = "1";
+    }
+
+    const regionValue = location.region || (typeKey === "region" ? location.country : "");
+    if ((typeKey === "region" || typeKey === "location") && regionValue) {
+      const regionNames = parseMultiValue(regionValue);
+      if (regionNames.length > 0) {
+        allowedRegions = padToFive(regionNames.map(parseValueForCircuit));
+        enableRegionCheck = "1";
+      }
+    }
+
+    const districtValue = location.district || (typeKey === "district" ? location.country : "");
+    if ((typeKey === "district" || typeKey === "location") && districtValue) {
+      const districtNames = parseMultiValue(districtValue);
+      if (districtNames.length > 0) {
+        allowedDistricts = padToFive(districtNames.map(parseValueForCircuit));
+        enableDistrictCheck = "1";
+      }
+    }
+  }
+
+  return {
+    requiredCountry,
+    allowedRegions,
+    allowedDistricts,
+    enableCountryCheck,
+    enableRegionCheck,
+    enableDistrictCheck,
+  };
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -167,7 +297,6 @@ export default function EligibilityScreen() {
   const processedPresentationRef = useRef<string | null>(null);
 
   const [step, setStep] = useState<Step>("request-credential");
-  const [selectedCredentialType, setSelectedCredentialType] = useState<CredentialType>("passport");
   const [requirementChecks, setRequirementChecks] = useState<RequirementCheckResult[]>([]);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [processedPresentation, setProcessedPresentation] = useState<string>("");
@@ -180,6 +309,10 @@ export default function EligibilityScreen() {
     hasReturnedPresentation
     && !errorMessage
     && (step === "request-credential" || step === "waiting-wallet");
+  const selectedCredentialType = useMemo(
+    () => resolveCredentialTypeForRequirements(requirements),
+    [requirements],
+  );
   const selectedCredentialConfig = getCredentialTypeConfig(selectedCredentialType);
   const requestedClaims = useMemo(
     () => getRequestedClaimsForCredential(selectedCredentialType, requirements),
@@ -356,21 +489,43 @@ export default function EligibilityScreen() {
       setStep("generating");
       setErrorMessage("");
       logProof(`Using SD-JWT from ${sourceLabel}.`);
-      logProof(`Survey requirements: ${requirements.map((req) => `${req.type} ${req.value}`).join(", ")}`);
+      logProof(`Survey requirements (${requirements.length}): ${requirements.map((req) => `${req.type}="${req.value}"`).join(", ")}`);
+      console.log("[Eligibility] requirements array:", JSON.stringify(requirements));
       const eligibilitySettings = resolveAgeRequirement(requirements);
+      const locationSettings = resolveLocationRequirementInputs(requirements);
+      console.log("[Eligibility] parsed location circuit settings:", locationSettings);
       const proofInput = buildEligibilityCircuitInputFromToken(sdJwtToken, {
         currentDate: normalizeYyyyMmDd(getUtcPlus2YyyyMmDd(), "Current date"),
         minAge: eligibilitySettings.minAge,
         enableAgeCheck: eligibilitySettings.enableAgeCheck,
+        requiredCountry: locationSettings.requiredCountry,
+        allowedRegions: locationSettings.allowedRegions,
+        allowedDistricts: locationSettings.allowedDistricts,
+        enableCountryCheck: locationSettings.enableCountryCheck,
+        enableRegionCheck: locationSettings.enableRegionCheck,
+        enableDistrictCheck: locationSettings.enableDistrictCheck,
       });
-      const normalizedDobValue = normalizeYyyyMmDd(proofInput.dobValue, "Birth date");
+      // Normalize DOB only when age check is enabled — for location-only surveys dobValue may be "0"
+      const normalizedDobValue = eligibilitySettings.enableAgeCheck === "1"
+        ? normalizeYyyyMmDd(proofInput.dobValue, "Birth date")
+        : proofInput.dobValue;
       const normalizedExpValue = normalizeYyyyMmDd(proofInput.expValue, "Expiry date");
+
       const finalProofInput: EligibilityCircuitInput = {
         ...proofInput,
         dobValue: normalizedDobValue,
         expValue: normalizedExpValue,
       };
 
+      console.log("[Eligibility] finalProofInput flags:", {
+        enableAgeCheck: finalProofInput.enableAgeCheck,
+        enableCountryCheck: finalProofInput.enableCountryCheck,
+        enableRegionCheck: finalProofInput.enableRegionCheck,
+        enableDistrictCheck: finalProofInput.enableDistrictCheck,
+        requiredCountry: finalProofInput.requiredCountry,
+        allowedRegions: finalProofInput.allowedRegions,
+        allowedDistricts: finalProofInput.allowedDistricts,
+      });
       const surveyId = String(survey?.id ?? id ?? "survey");
       const result: RequirementCheckResult = {
         requirementId: surveyId,
@@ -387,20 +542,28 @@ export default function EligibilityScreen() {
       setRequirementChecks([result]);
       logProof(`Prepared eligibility proof for survey ${surveyId}. enableAgeCheck=${eligibilitySettings.enableAgeCheck}, minAge=${eligibilitySettings.minAge}`);
 
-      const zkeyPath = await getZkeyPath();
-      logProof(`Using zkey at: ${zkeyPath}`);
+      const serviceUrl = process.env.EXPO_PUBLIC_PROOF_SERVICE_URL ?? "http://10.0.2.2:8787";
+      logProof(`Sending proof request to ${serviceUrl}`);
 
-      const { generateCircomProof, verifyCircomProof, ProofLib } = await import("mopro-ffi");
-      const proofResult = generateCircomProof(
-        zkeyPath,
-        JSON.stringify(toMoproInputs(finalProofInput)),
-        ProofLib.Arkworks,
-      );
+      const generateRes = await fetch(`${serviceUrl}/proof/eligibility/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...finalProofInput, surveyId }),
+      });
+      const generateData = await generateRes.json() as { ok: boolean; error?: string };
+      if (!generateData.ok) {
+        throw new Error(generateData.error ?? "Proof generation failed.");
+      }
       logProof("Proof generated. Verifying...");
 
-      const isValid = verifyCircomProof(zkeyPath, proofResult, ProofLib.Arkworks);
-      if (!isValid) {
-        throw new Error("Proof verification failed.");
+      const verifyRes = await fetch(`${serviceUrl}/proof/eligibility/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const verifyData = await verifyRes.json() as { ok: boolean; error?: string };
+      if (!verifyData.ok) {
+        throw new Error(verifyData.error ?? "Proof verification failed.");
       }
 
       result.status = "ok";
@@ -491,33 +654,17 @@ export default function EligibilityScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Step 1: Request Identity Credential</Text>
 
-            {CREDENTIAL_TYPES.map((credential) => {
-              const claimsForCredential = getRequestedClaimsForCredential(credential.id, requirements);
-              const isSelected = selectedCredentialType === credential.id;
-
-              return (
-                <TouchableOpacity
-                  key={credential.id}
-                  style={[
-                    styles.credentialCard,
-                    isSelected && styles.credentialCardSelected,
-                  ]}
-                  onPress={() => setSelectedCredentialType(credential.id)}
-                >
-                  <View style={styles.credentialInfo}>
-                    <Text style={styles.credentialLabel}>{credential.label}</Text>
-                    <Text style={styles.credentialDescription}>
-                      {claimsForCredential.length > 0
-                        ? `Will request: ${claimsForCredential.join(", ")}`
-                        : "No matching claims for this survey"}
-                    </Text>
-                  </View>
-                  {isSelected && (
-                    <Feather name="check" size={18} color={palette.primary} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
+            <View style={styles.credentialSummaryCard}>
+              <Text style={styles.credentialSummaryLabel}>Required document</Text>
+              <Text style={styles.credentialSummaryValue}>
+                {selectedCredentialConfig?.label ?? "Passport"}
+              </Text>
+              <Text style={styles.credentialSummaryDescription}>
+                {hasLocationRequirement(requirements)
+                  ? "Location requirements detected, so Valera will be asked for a Residence Permit."
+                  : "Age requirements detected, so Valera will be asked for a Passport."}
+              </Text>
+            </View>
 
             {selectedCredentialConfig && requestedClaims.length > 0 && (
               <View style={styles.claimsBox}>
@@ -526,6 +673,7 @@ export default function EligibilityScreen() {
                 </Text>
               </View>
             )}
+
           </View>
         )}
 
@@ -693,34 +841,32 @@ const styles = StyleSheet.create({
     color: palette.textPrimary,
     marginBottom: 8,
   },
-  credentialCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
+  credentialSummaryCard: {
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
+    borderColor: palette.border,
+    borderRadius: 12,
     padding: 12,
     marginBottom: 12,
     backgroundColor: palette.white,
   },
-  credentialCardSelected: {
-    borderColor: palette.primary,
-    backgroundColor: palette.primaryNegative,
-  },
-  credentialInfo: {
-    flex: 1,
-  },
-  credentialLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: palette.textPrimary,
-  },
-  credentialDescription: {
+  credentialSummaryLabel: {
     fontSize: 12,
+    fontWeight: "700",
     color: palette.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  credentialSummaryValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: palette.textPrimary,
     marginTop: 4,
-    lineHeight: 17,
+  },
+  credentialSummaryDescription: {
+    fontSize: 13,
+    color: palette.textSecondary,
+    marginTop: 6,
+    lineHeight: 19,
   },
   claimsBox: {
     padding: 10,

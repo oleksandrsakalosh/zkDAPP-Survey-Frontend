@@ -97,14 +97,14 @@ const encodeGroth16Proof = (proof: Groth16ProofCalldata) =>
   )}${encodeUint256(proof.pi_b[0][1])}${encodeUint256(proof.pi_b[1][0])}${encodeUint256(
     proof.pi_b[1][1]
   )}${encodeUint256(proof.pi_c[0])}${encodeUint256(proof.pi_c[1])}${proof.pubInputs
-    .slice(0, 6)
+    .slice(0, 20)
     .map(encodeUint256)
     .join("")}`;
 
 const requireContractProofShape = (proof: Groth16ProofCalldata) => {
-  if (proof.pubInputs.length !== 6) {
+  if (proof.pubInputs.length !== 20) {
     throw new Error(
-      `The deployed registration contract expects 6 public inputs, but the generated proof has ${proof.pubInputs.length}. Deploy the updated verifier contract or use the matching proof service/circuit.`
+      `The deployed registration contract expects 20 public inputs, but the generated proof has ${proof.pubInputs.length}. Deploy the updated verifier contract or use the matching proof service/circuit.`
     );
   }
 };
@@ -112,14 +112,14 @@ const requireContractProofShape = (proof: Groth16ProofCalldata) => {
 const buildRegisterForElectionCallData = (electionId: number, proof: Groth16ProofCalldata) => {
   requireContractProofShape(proof);
   return `0x${stripHexPrefix(
-    getSelector("registerForElection(uint256,uint256[2],uint256[2][2],uint256[2],uint256[6])")
+    getSelector("registerForElection(uint256,uint256[2],uint256[2][2],uint256[2],uint256[20])")
   )}${encodeUint256(electionId)}${encodeGroth16Proof(proof)}`;
 };
 
 const buildVerifyProofViewCallData = (proof: Groth16ProofCalldata) => {
   requireContractProofShape(proof);
   return `0x${stripHexPrefix(
-    getSelector("verifyProofView(uint256[2],uint256[2][2],uint256[2],uint256[6])")
+    getSelector("verifyProofView(uint256[2],uint256[2][2],uint256[2],uint256[20])")
   )}${encodeGroth16Proof(proof)}`;
 };
 

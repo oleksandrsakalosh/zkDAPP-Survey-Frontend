@@ -112,9 +112,12 @@ export const CREDENTIAL_TYPES: CredentialTypeConfig[] = [
     isoDocType: 'ResidencePermit',
     attributes: [
       { id: 'country_code', label: 'Country Code', selected: true },
+      { id: 'region', label: 'Region', selected: false },
+      { id: 'district', label: 'District', selected: false },
       { id: 'first_name', label: 'First Name', selected: true },
       { id: 'last_name', label: 'Last Name', selected: true },
       { id: 'permit_number', label: 'Permit Number', selected: true },
+      { id: 'expiry_date', label: 'Expiry Date', selected: false },
     ],
   },
   {
@@ -133,24 +136,6 @@ export const CREDENTIAL_TYPES: CredentialTypeConfig[] = [
       { id: 'issuance_date', label: 'Issuance Date', selected: true },
       { id: 'expiry_date', label: 'Expiry Date', selected: true },
       { id: 'issuing_country', label: 'Issuing Country', selected: true },
-    ],
-  },
-  {
-    id: 'age_verification',
-    label: 'Age Verification',
-    description: 'Age Verification Credential',
-    vct: 'org.iso.18013.5.1.age_verification',
-    isoDocType: 'org.iso.18013.5.1.age_verification',
-    attributes: [
-      { id: 'age_over_12', label: 'Age Over 12', selected: false },
-      { id: 'age_over_13', label: 'Age Over 13', selected: false },
-      { id: 'age_over_14', label: 'Age Over 14', selected: false },
-      { id: 'age_over_16', label: 'Age Over 16', selected: false },
-      { id: 'age_over_25', label: 'Age Over 25', selected: false },
-      { id: 'age_over_60', label: 'Age Over 60', selected: false },
-      { id: 'age_over_62', label: 'Age Over 62', selected: false },
-      { id: 'age_over_65', label: 'Age Over 65', selected: false },
-      { id: 'age_over_68', label: 'Age Over 68', selected: false },
     ],
   },
 ];
