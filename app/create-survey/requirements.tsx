@@ -15,34 +15,137 @@ import { Ionicons } from "@expo/vector-icons";
 import { SurveyRequirement, RequirementType } from "@/domain/models";
 import { palette } from "@/theme/palette";
 import { useSurveyDraft } from "@/utils/SurveyDraftContext";
+import { LocationModalPicker } from "@/components/LocationModalPicker";
+import {
+    getResidencePermitCountryByLabel,
+    getResidencePermitCountryOptions,
+    getResidencePermitDistricts,
+    getResidencePermitRegions,
+} from "@/utils/zk/residencePermitLocations";
 
+const MANAGED_TYPES: RequirementType[] = ["Age", "Country", "Region", "District"];
+const LEGACY_TYPES: RequirementType[] = ["Education level"];
+const ALL_TYPES: RequirementType[] = [...MANAGED_TYPES, ...LEGACY_TYPES];
+const COUNTRY_OPTIONS = getResidencePermitCountryOptions();
+const LOCATION_TYPES: RequirementType[] = ["Country", "Region", "District"];
 
-const TYPES: RequirementType[] = ["Age", "Location", "Education level"];
+type RequirementGroup = "age" | "location";
 
 const makeId = () => `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const placeholderByType: Record<Exclude<RequirementType, "">, string> = {
     Age: "18–35",
-    Location: "United States",
+    Country: "Select a country",
+    Region: "Select a region",
+    District: "Select a district",
+    Location: "Select a country",
     "Education level": "College+",
 };
 
 const isRequirementType = (value: string): value is Exclude<RequirementType, ""> => {
-    return TYPES.includes(value as Exclude<RequirementType, "">);
+    return ALL_TYPES.includes(value as Exclude<RequirementType, "">);
 };
 
 const normalizeRequirementType = (value: string): RequirementType => {
+    if (value === "Location") {
+        return "Country";
+    }
+
     return isRequirementType(value) ? value : "";
 };
 
+const isManagedRequirementType = (value: RequirementType): value is Exclude<RequirementType, "" | "Education level" | "Location"> => {
+    return MANAGED_TYPES.includes(value as Exclude<RequirementType, "" | "Education level" | "Location">);
+};
+
+function parseLocationValue(value: string): { country: string; region: string; district: string } {
+    const [country = "", region = "", district = ""] = value
+        .split(" / ")
+        .map((part) => part.trim())
+        .concat(["", "", ""])
+        .slice(0, 3);
+
+    return { country, region, district };
+}
+
+function formatLocationValue(country: string, region = "", district = ""): string {
+    return [country.trim(), region.trim(), district.trim()].filter(Boolean).join(" / ");
+}
+
+function parseMultiSelectValue(value: string): string[] {
+    if (!value.trim()) return [];
+    return value.split(",").map((v) => v.trim()).filter(Boolean);
+}
+
+function formatMultiSelectValue(values: string[]): string {
+    return values.map((v) => v.trim()).filter(Boolean).join(", ");
+}
+
+function getDisplayValue(
+    type: RequirementType,
+    value: string,
+    country?: string
+): string {
+    if (type === "Country") {
+        return value;
+    }
+    if (type === "Region" || type === "District") {
+        return formatMultiSelectValue(parseMultiSelectValue(value));
+    }
+    return value;
+}
+
+function getRequirementPlaceholder(type: RequirementType): string {
+    return placeholderByType[type as Exclude<RequirementType, "">] ?? "Enter value";
+}
+
+function getRequirementGroup(type: RequirementType): RequirementGroup | null {
+    if (type === "Age") {
+        return "age";
+    }
+
+    if (LOCATION_TYPES.includes(type as (typeof LOCATION_TYPES)[number])) {
+        return "location";
+    }
+
+    return null;
+}
+
+function isRequirementFilled(requirement: SurveyRequirement): boolean {
+    if (!requirement.type.trim()) {
+        return false;
+    }
+
+    if (requirement.type === "Age" || requirement.type === "Education level") {
+        return requirement.value.trim().length > 0;
+    }
+
+    if (requirement.type === "Country") {
+        return parseLocationValue(requirement.value).country.length > 0;
+    }
+
+    if (requirement.type === "Region") {
+        const { country, region } = parseLocationValue(requirement.value);
+        return country.length > 0 && region.length > 0;
+    }
+
+    if (requirement.type === "District") {
+        const { country, region, district } = parseLocationValue(requirement.value);
+        return country.length > 0 && region.length > 0 && district.length > 0;
+    }
+
+    return requirement.value.trim().length > 0;
+}
+
 type RequirementDropdownProps = {
-    value: RequirementType;
-    options: RequirementType[];
+    value: string;
+    options: string[];
     placeholder?: string;
     isOpen: boolean;
     onOpen: () => void;
     onClose: () => void;
-    onSelect: (value: RequirementType) => void;
+    onSelect: (value: string) => void;
+    disabled?: boolean;
 };
 
 function RequirementDropdown({
@@ -53,15 +156,19 @@ function RequirementDropdown({
     onOpen,
     onClose,
     onSelect,
+    disabled = false,
 }: RequirementDropdownProps) {
-    const handleSelect = (nextValue: RequirementType) => {
+    const handleSelect = (nextValue: string) => {
         onSelect(nextValue);
         onClose();
     };
 
     return (
         <View style={styles.dropdownWrap}>
-            <Pressable style={styles.dropdownField} onPress={isOpen ? onClose : onOpen}>
+            <Pressable
+                style={[styles.dropdownField, disabled && styles.dropdownFieldDisabled]}
+                onPress={disabled ? undefined : isOpen ? onClose : onOpen}
+            >
                 <Text style={[styles.dropdownText, !value && styles.dropdownPlaceholder]}>
                     {value || placeholder}
                 </Text>
@@ -74,48 +181,56 @@ function RequirementDropdown({
 
             {isOpen && (
                 <View style={styles.dropdownMenu}>
-                    {!!value && (
-                        <Pressable
-                            style={styles.dropdownItem}
-                            onPress={() => handleSelect("")}
-                        >
-                            <Text style={[styles.dropdownItemText, styles.clearOptionText]}>
-                                Clear selection
-                            </Text>
-                        </Pressable>
-                    )}
-
-                    {options.map((option) => {
-                        const active = value === option;
-
-                        return (
+                    <ScrollView
+                        nestedScrollEnabled
+                        keyboardShouldPersistTaps="handled"
+                        showsVerticalScrollIndicator
+                        style={styles.dropdownMenuScroll}
+                        contentContainerStyle={styles.dropdownMenuContent}
+                    >
+                        {!!value && (
                             <Pressable
-                                key={option}
-                                style={[
-                                    styles.dropdownItem,
-                                    active && styles.dropdownItemActive,
-                                ]}
-                                onPress={() => handleSelect(option)}
+                                style={styles.dropdownItem}
+                                onPress={() => handleSelect("")}
                             >
-                                <Text
-                                    style={[
-                                        styles.dropdownItemText,
-                                        active && styles.dropdownItemTextActive,
-                                    ]}
-                                >
-                                    {option}
+                                <Text style={[styles.dropdownItemText, styles.clearOptionText]}>
+                                    Clear selection
                                 </Text>
-
-                                {active && (
-                                    <Ionicons
-                                        name="checkmark"
-                                        size={16}
-                                        color={palette.primary}
-                                    />
-                                )}
                             </Pressable>
-                        );
-                    })}
+                        )}
+
+                        {options.map((option) => {
+                            const active = value === option;
+
+                            return (
+                                <Pressable
+                                    key={option}
+                                    style={[
+                                        styles.dropdownItem,
+                                        active && styles.dropdownItemActive,
+                                    ]}
+                                    onPress={() => handleSelect(option)}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.dropdownItemText,
+                                            active && styles.dropdownItemTextActive,
+                                        ]}
+                                    >
+                                        {option}
+                                    </Text>
+
+                                    {active && (
+                                        <Ionicons
+                                            name="checkmark"
+                                            size={16}
+                                            color={palette.primary}
+                                        />
+                                    )}
+                                </Pressable>
+                            );
+                        })}
+                    </ScrollView>
                 </View>
             )}
         </View>
@@ -136,24 +251,51 @@ export default function RequirementsStep() {
 
         return [
             { id: makeId(), type: "Age", value: "" },
-            { id: makeId(), type: "Location", value: "" },
-            { id: makeId(), type: "Education level", value: "" },
+            { id: makeId(), type: "Country", value: "" },
         ];
     }, [draft.requirements]);
 
     const [requirements, setRequirements] = useState<SurveyRequirement[]>(initialRequirements);
     const [submitAttempted, setSubmitAttempted] = useState(false);
-    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+    const [openDropdownKey, setOpenDropdownKey] = useState<string | null>(null);
+    const [activeModal, setActiveModal] = useState<{ id: string; type: "country" | "region" | "district" } | null>(null);
 
-    const selectedTypes = useMemo(
-        () => requirements.map((r) => r.type).filter(Boolean) as Exclude<RequirementType, "">[],
+    const activeRequirements = useMemo(
+        () => requirements.filter(isRequirementFilled),
         [requirements]
     );
 
+    const selectedTypes = useMemo(
+        () =>
+            activeRequirements
+                .map((r) => r.type)
+                .filter((type): type is Exclude<RequirementType, ""> => isManagedRequirementType(type)),
+        [activeRequirements]
+    );
+
+    const activeRequirementGroups = useMemo(() => {
+        return new Set(
+            activeRequirements
+                .map((requirement) => getRequirementGroup(requirement.type))
+                .filter((group): group is RequirementGroup => group !== null)
+        );
+    }, [activeRequirements]);
+
+    const hasMixedRequirementGroups = activeRequirementGroups.size > 1;
+    const activeRequirementGroup = hasMixedRequirementGroups
+        ? null
+        : activeRequirementGroups.values().next().value ?? null;
+
     const getAvailableTypes = (currentId: string): RequirementType[] => {
         const current = requirements.find((r) => r.id === currentId);
+        const allowedTypes: RequirementType[] =
+            activeRequirementGroup === "age"
+                ? ["Age"]
+                : activeRequirementGroup === "location"
+                    ? LOCATION_TYPES
+                    : MANAGED_TYPES;
 
-        return TYPES.filter((type) => {
+        return [...allowedTypes, ...(current?.type === "Education level" ? ["Education level" as RequirementType] : [])].filter((type) => {
             if (type === current?.type) return true;
             return !selectedTypes.includes(type as Exclude<RequirementType, "">);
         });
@@ -167,13 +309,20 @@ export default function RequirementsStep() {
 
     const removeReq = (id: string) => {
         setRequirements((prev) => prev.filter((r) => r.id !== id));
-        setOpenDropdownId((prev) => (prev === id ? null : prev));
+        setOpenDropdownKey((prev) => (prev?.startsWith(id) ? null : prev));
     };
 
     const addReq = () => {
-        const unusedType = TYPES.find(
+        const allowedTypes =
+            activeRequirementGroup === "age"
+                ? ["Age"]
+                : activeRequirementGroup === "location"
+                    ? LOCATION_TYPES
+                    : MANAGED_TYPES;
+
+        const unusedType = allowedTypes.find(
             (type) => !selectedTypes.includes(type as Exclude<RequirementType, "">)
-        );
+        ) as RequirementType | undefined;
 
         setRequirements((prev) => [
             ...prev,
@@ -182,29 +331,101 @@ export default function RequirementsStep() {
     };
 
     const getReqError = (r: SurveyRequirement): string | null => {
-        if (!r.type.trim()) return "Requirement is required.";
+        if (!isRequirementFilled(r)) return null;
+
+        if (r.type === "Age" || r.type === "Education level") {
+            return null;
+        }
+
+        if (r.type === "Country") {
+            return null;
+        }
+
+        if (r.type === "Region") {
+            return null;
+        }
+
+        if (r.type === "District") {
+            return null;
+        }
+
         if (!r.value.trim()) return "Value is required for this requirement.";
         return null;
     };
 
+    const groupError = hasMixedRequirementGroups
+        ? "Use age requirements or location requirements, not both."
+        : null;
+
     const allReqsValid = useMemo(
-        () => requirements.every((r) => getReqError(r) === null),
-        [requirements]
+        () => !groupError && requirements.every((r) => getReqError(r) === null),
+        [groupError, requirements]
     );
 
-    const canAddMore = requirements.length < TYPES.length;
+    const canAddMore = !groupError && selectedTypes.length < (activeRequirementGroup === "age" ? 1 : activeRequirementGroup === "location" ? 3 : MANAGED_TYPES.length);
+
+    const updateLocationRequirement = (
+        id: string,
+        nextValue: Partial<{ country: string; region: string | string[]; district: string | string[] }>,
+    ) => {
+        const current = requirements.find((r) => r.id === id);
+        if (!current) return;
+
+        const parsed = parseLocationValue(current.value);
+
+        if (current.type === "Country") {
+            const country = typeof nextValue.country === "string" ? nextValue.country : "";
+            updateReq(id, { value: formatLocationValue(country) });
+            return;
+        }
+
+        if (current.type === "Region") {
+            const country = typeof nextValue.country === "string" ? nextValue.country : parsed.country;
+            const regions = Array.isArray(nextValue.region) ? nextValue.region : [];
+            const regionValue = formatMultiSelectValue(regions);
+            updateReq(id, { value: formatLocationValue(country, regionValue) });
+            return;
+        }
+
+        if (current.type === "District") {
+            const country = typeof nextValue.country === "string" ? nextValue.country : parsed.country;
+            const region = typeof nextValue.region === "string" ? nextValue.region : parsed.region;
+            const districts = Array.isArray(nextValue.district) ? nextValue.district : [];
+            const districtValue = formatMultiSelectValue(districts);
+            updateReq(id, { value: formatLocationValue(country, region, districtValue) });
+        }
+    };
+
+    const normalizeAndSaveRequirements = () =>
+        requirements
+            .filter(isRequirementFilled)
+            .map((r) => {
+                if (r.type === "Country" || r.type === "Region" || r.type === "District") {
+                    const { country, region, district } = parseLocationValue(r.value);
+                    return {
+                        id: r.id,
+                        type: r.type,
+                        value:
+                            r.type === "Country"
+                                ? country.trim()
+                                : r.type === "Region"
+                                    ? formatLocationValue(country, region)
+                                    : formatLocationValue(country, region, district),
+                    };
+                }
+
+                return {
+                    id: r.id,
+                    type: r.type,
+                    value: r.value.trim(),
+                };
+            });
 
     const onNext = () => {
         setSubmitAttempted(true);
         if (!allReqsValid) return;
 
-        const cleaned: SurveyRequirement[] = requirements
-            .map((r) => ({
-                id: r.id,
-                type: r.type.trim() as Exclude<RequirementType, "">,
-                value: r.value.trim(),
-            }))
-            .filter((r) => r.type.length > 0);
+        const cleaned: SurveyRequirement[] = normalizeAndSaveRequirements();
 
         setDraft((p) => ({ ...p, requirements: cleaned }));
         router.push("/create-survey/review");
@@ -212,7 +433,7 @@ export default function RequirementsStep() {
 
     return (
         <SafeAreaView style={styles.safe}>
-            <Pressable style={{ flex: 1 }} onPress={() => setOpenDropdownId(null)}>
+            <View style={{ flex: 1 }}>
                 <View style={styles.header}>
                     <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
                         <Ionicons name="chevron-back" size={22} color="#111827" />
@@ -246,30 +467,40 @@ export default function RequirementsStep() {
                         </Text>
                     </View>
 
+                    {groupError && (
+                        <View style={styles.groupErrorBox}>
+                            <Ionicons name="alert-circle" size={16} color="#B91C1C" />
+                            <Text style={styles.groupErrorText}>{groupError}</Text>
+                        </View>
+                    )}
+
                     {requirements.map((r) => {
                         const err = submitAttempted ? getReqError(r) : null;
-                        const valueError = submitAttempted && !!r.type && !r.value.trim();
-                        const typeError = submitAttempted && !r.type.trim();
+                        const valueError = submitAttempted && !!err && r.type !== "";
+                        const typeError = false;
                         const availableTypes = getAvailableTypes(r.id);
-                        const placeholder = r.type ? placeholderByType[r.type] : "Enter value";
+                        const location = parseLocationValue(r.value);
+                        const country = getResidencePermitCountryByLabel(location.country);
+                        const regions = getResidencePermitRegions(country?.code);
+                        const districts = getResidencePermitDistricts(country?.code, location.region);
 
                         return (
                             <View
                                 key={r.id}
-                                style={[styles.reqBlock, openDropdownId === r.id && styles.reqBlockOpen]}
+                                style={[styles.reqBlock, openDropdownKey?.startsWith(r.id) && styles.reqBlockOpen]}
                             >
-                                <Pressable onPress={() => setOpenDropdownId(null)}>
+                                <Pressable onPress={() => setOpenDropdownKey(null)}>
                                     <View style={styles.reqRow}>
                                         <View style={{ flex: 1 }}>
                                             <RequirementDropdown
                                                 value={r.type}
                                                 options={availableTypes}
-                                                isOpen={openDropdownId === r.id}
-                                                onOpen={() => setOpenDropdownId(r.id)}
-                                                onClose={() => setOpenDropdownId(null)}
+                                                isOpen={openDropdownKey === `${r.id}:type`}
+                                                onOpen={() => setOpenDropdownKey(`${r.id}:type`)}
+                                                onClose={() => setOpenDropdownKey(null)}
                                                 onSelect={(value) =>
                                                     updateReq(r.id, {
-                                                        type: value,
+                                                        type: value as RequirementType,
                                                         value: "",
                                                     })
                                                 }
@@ -290,15 +521,117 @@ export default function RequirementsStep() {
                                         </Pressable>
                                     </View>
 
-                                    <TextInput
-                                        value={r.value}
-                                        onChangeText={(t) => updateReq(r.id, { value: t })}
-                                        placeholder={placeholder}
-                                        placeholderTextColor="#9CA3AF"
-                                        style={[styles.reqInput, valueError && styles.inputError]}
-                                    />
+                                    {r.type === "Age" || r.type === "Education level" || r.type === "Location" ? (
+                                        <>
+                                            <TextInput
+                                                value={r.value}
+                                                onChangeText={(t) => updateReq(r.id, { value: t })}
+                                                placeholder={getRequirementPlaceholder(r.type)}
+                                                placeholderTextColor="#9CA3AF"
+                                                style={[styles.reqInput, valueError && styles.inputError]}
+                                            />
 
-                                    {valueError && <Text style={styles.inlineErrorText}>{err}</Text>}
+                                            {valueError && <Text style={styles.inlineErrorText}>{err}</Text>}
+                                        </>
+                                    ) : null}
+
+                                    {r.type === "Country" && (
+                                        <>
+                                            <Pressable
+                                                style={[styles.modalPickerButton, !location.country && styles.modalPickerButtonEmpty]}
+                                                onPress={() => setActiveModal({ id: r.id, type: "country" })}
+                                            >
+                                                <Text style={[styles.modalPickerText, !location.country && styles.modalPickerTextEmpty]}>
+                                                    {location.country || "Select a country"}
+                                                </Text>
+                                                <Ionicons name="chevron-forward" size={18} color={location.country ? palette.primary : "#9CA3AF"} />
+                                            </Pressable>
+                                            {valueError && <Text style={styles.inlineErrorText}>{err}</Text>}
+                                        </>
+                                    )}
+
+                                    {r.type === "Region" && (
+                                        <>
+                                            <Pressable
+                                                style={styles.modalPickerButton}
+                                                onPress={() => setActiveModal({ id: r.id, type: "country" })}
+                                            >
+                                                <Text style={[styles.modalPickerText, !location.country && styles.modalPickerTextEmpty]}>
+                                                    {location.country || "Select a country"}
+                                                </Text>
+                                                <Ionicons name="chevron-forward" size={18} color={location.country ? palette.primary : "#9CA3AF"} />
+                                            </Pressable>
+
+                                            <View style={{ height: 10 }} />
+
+                                            <Pressable
+                                                style={[
+                                                    styles.modalPickerButton,
+                                                    !location.country && styles.modalPickerButtonDisabled,
+                                                    !parseMultiSelectValue(location.region).length && styles.modalPickerButtonEmpty,
+                                                ]}
+                                                onPress={() => location.country && setActiveModal({ id: r.id, type: "region" })}
+                                                disabled={!location.country}
+                                            >
+                                                <Text style={[styles.modalPickerText, !parseMultiSelectValue(location.region).length && styles.modalPickerTextEmpty]}>
+                                                    {getDisplayValue("Region", location.region) || "Select regions"}
+                                                </Text>
+                                                <Ionicons name="chevron-forward" size={18} color={parseMultiSelectValue(location.region).length > 0 ? palette.primary : "#9CA3AF"} />
+                                            </Pressable>
+
+                                            {valueError && <Text style={styles.inlineErrorText}>{err}</Text>}
+                                        </>
+                                    )}
+
+                                    {r.type === "District" && (
+                                        <>
+                                            <Pressable
+                                                style={styles.modalPickerButton}
+                                                onPress={() => setActiveModal({ id: r.id, type: "country" })}
+                                            >
+                                                <Text style={[styles.modalPickerText, !location.country && styles.modalPickerTextEmpty]}>
+                                                    {location.country || "Select a country"}
+                                                </Text>
+                                                <Ionicons name="chevron-forward" size={18} color={location.country ? palette.primary : "#9CA3AF"} />
+                                            </Pressable>
+
+                                            <View style={{ height: 10 }} />
+
+                                            <Pressable
+                                                style={[
+                                                    styles.modalPickerButton,
+                                                    !location.country && styles.modalPickerButtonDisabled,
+                                                    !location.region.trim().length && styles.modalPickerButtonEmpty,
+                                                ]}
+                                                onPress={() => location.country && setActiveModal({ id: r.id, type: "region" })}
+                                                disabled={!location.country}
+                                            >
+                                                <Text style={[styles.modalPickerText, !parseMultiSelectValue(location.region).length && styles.modalPickerTextEmpty]}>
+                                                    {location.region || "Select region"}
+                                                </Text>
+                                                <Ionicons name="chevron-forward" size={18} color={location.region.trim().length > 0 ? palette.primary : "#9CA3AF"} />
+                                            </Pressable>
+
+                                            <View style={{ height: 10 }} />
+
+                                            <Pressable
+                                                style={[
+                                                    styles.modalPickerButton,
+                                                    (!location.country || !location.region.trim().length) && styles.modalPickerButtonDisabled,
+                                                    !parseMultiSelectValue(location.district).length && styles.modalPickerButtonEmpty,
+                                                ]}
+                                                onPress={() => location.country && location.region.trim().length > 0 && setActiveModal({ id: r.id, type: "district" })}
+                                                disabled={!location.country || !location.region.trim().length}
+                                            >
+                                                <Text style={[styles.modalPickerText, !parseMultiSelectValue(location.district).length && styles.modalPickerTextEmpty]}>
+                                                    {getDisplayValue("District", location.district) || "Select districts"}
+                                                </Text>
+                                                <Ionicons name="chevron-forward" size={18} color={parseMultiSelectValue(location.district).length > 0 ? palette.primary : "#9CA3AF"} />
+                                            </Pressable>
+
+                                            {valueError && <Text style={styles.inlineErrorText}>{err}</Text>}
+                                        </>
+                                    )}
                                 </Pressable>
                             </View>
                         );
@@ -334,7 +667,87 @@ export default function RequirementsStep() {
                         <Text style={styles.nextArrow}>›</Text>
                     </Pressable>
                 </View>
-            </Pressable>
+
+                {/* Country Modal */}
+                {activeModal?.type === "country" && activeModal?.id && (() => {
+                    const req = requirements.find((r) => r.id === activeModal.id);
+                    const location = req ? parseLocationValue(req.value) : { country: "", region: "", district: "" };
+                    return (
+                        <LocationModalPicker
+                            visible={activeModal?.type === "country"}
+                            title="Select Country"
+                            options={COUNTRY_OPTIONS.map((opt) => opt.label)}
+                            selectedValue={location.country}
+                            mode="single"
+                            onConfirm={(value) => {
+                                const selectedCountry = typeof value === "string" ? value : value[0] ?? "";
+                                updateLocationRequirement(activeModal.id, { country: selectedCountry, region: [], district: [] });
+                                setActiveModal(null);
+                            }}
+                            onCancel={() => setActiveModal(null)}
+                        />
+                    );
+                })()}
+
+                {/* Region Modal */}
+                {activeModal?.type === "region" && activeModal?.id && (() => {
+                    const req = requirements.find((r) => r.id === activeModal.id);
+                    const location = req ? parseLocationValue(req.value) : { country: "", region: "", district: "" };
+                    const country = getResidencePermitCountryByLabel(location.country);
+                    const regionOptions = getResidencePermitRegions(country?.code);
+                    const selectedRegions = parseMultiSelectValue(location.region);
+                    const isDistrictRequirement = req?.type === "District";
+                    return (
+                        <LocationModalPicker
+                            visible={activeModal?.type === "region"}
+                            title={isDistrictRequirement ? "Select Region" : "Select Regions"}
+                            options={regionOptions}
+                            selectedValue={isDistrictRequirement ? location.region : selectedRegions}
+                            mode={isDistrictRequirement ? "single" : "multi"}
+                            maxSelections={5}
+                            onConfirm={(value) => {
+                                if (isDistrictRequirement) {
+                                    const selected = typeof value === "string" ? value : value[0] ?? "";
+                                    updateLocationRequirement(activeModal.id, { region: selected, district: [] });
+                                } else {
+                                    const selected = Array.isArray(value) ? value.slice(0, 5) : [value].filter(Boolean);
+                                    updateLocationRequirement(activeModal.id, { region: selected, district: [] });
+                                }
+                                setActiveModal(null);
+                            }}
+                            onCancel={() => setActiveModal(null)}
+                        />
+                    );
+                })()}
+
+                {/* District Modal */}
+                {activeModal?.type === "district" && activeModal?.id && (() => {
+                    const req = requirements.find((r) => r.id === activeModal.id);
+                    const location = req ? parseLocationValue(req.value) : { country: "", region: "", district: "" };
+                    const country = getResidencePermitCountryByLabel(location.country);
+                    const districtRegion = location.region.trim();
+                    const districtOptions = districtRegion.length > 0
+                        ? getResidencePermitDistricts(country?.code, districtRegion)
+                        : [];
+                    const selectedDistricts = parseMultiSelectValue(location.district);
+                    return (
+                        <LocationModalPicker
+                            visible={activeModal?.type === "district"}
+                            title="Select Districts"
+                            options={districtOptions}
+                            selectedValue={selectedDistricts}
+                            mode="multi"
+                            maxSelections={5}
+                            onConfirm={(value) => {
+                                const selected = Array.isArray(value) ? value.slice(0, 5) : [value].filter(Boolean);
+                                updateLocationRequirement(activeModal.id, { district: selected });
+                                setActiveModal(null);
+                            }}
+                            onCancel={() => setActiveModal(null)}
+                        />
+                    );
+                })()}
+            </View>
         </SafeAreaView>
     );
 }
@@ -426,6 +839,10 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "space-between",
     },
+    dropdownFieldDisabled: {
+        backgroundColor: "#F9FAFB",
+        opacity: 0.7,
+    },
     dropdownText: {
         fontSize: 16,
         color: "#111827",
@@ -441,6 +858,7 @@ const styles = StyleSheet.create({
         top: 58,
         left: 0,
         right: 0,
+        maxHeight: 240,
         borderRadius: 14,
         borderWidth: 1,
         borderColor: "#E5E7EB",
@@ -452,6 +870,14 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 6 },
         elevation: 8,
         zIndex: 999,
+    },
+
+    dropdownMenuScroll: {
+        maxHeight: 228,
+    },
+
+    dropdownMenuContent: {
+        paddingVertical: 0,
     },
 
     dropdownItem: {
@@ -514,6 +940,27 @@ const styles = StyleSheet.create({
         marginTop: 6,
         color: "#EF4444",
         fontSize: 12,
+        fontWeight: "700",
+    },
+
+    groupErrorBox: {
+        marginHorizontal: 16,
+        marginBottom: 12,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 14,
+        backgroundColor: "#FEF2F2",
+        borderWidth: 1,
+        borderColor: "#FECACA",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+    },
+
+    groupErrorText: {
+        flex: 1,
+        color: "#B91C1C",
+        fontSize: 13,
         fontWeight: "700",
     },
 
@@ -580,4 +1027,34 @@ const styles = StyleSheet.create({
     },
     nextText: { fontSize: 16, fontWeight: "800", color: palette.white },
     nextArrow: { color: palette.white, fontSize: 22, marginLeft: 10, marginTop: -1 },
+
+    modalPickerButton: {
+        marginTop: 10,
+        height: 54,
+        borderWidth: 1,
+        borderColor: "#E5E7EB",
+        borderRadius: 16,
+        paddingHorizontal: 14,
+        backgroundColor: palette.white,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    modalPickerButtonEmpty: {
+        backgroundColor: "#F9FAFB",
+    },
+    modalPickerButtonDisabled: {
+        opacity: 0.5,
+        backgroundColor: "#F9FAFB",
+    },
+    modalPickerText: {
+        fontSize: 16,
+        color: "#111827",
+        fontWeight: "500",
+        flex: 1,
+    },
+    modalPickerTextEmpty: {
+        color: "#9CA3AF",
+        fontWeight: "400",
+    },
 });

@@ -9,7 +9,7 @@ const checks = {
     description: 'Prove eligibility with SD-JWT disclosures.',
     circuitName: 'eligibility',
     circuitFile: path.join(zkRoot, 'circuits', 'eligibility.circom'),
-    buildDir: path.join(zkRoot, 'build', 'v1'),
+    buildDir: path.join(zkRoot, 'build', 'v2'),
     ptauDir: path.join(zkRoot, 'ptau'),
     inputDir: path.join(zkRoot, 'inputs'),
     inputFile: path.join(zkRoot, 'inputs', 'eligibility-input.json'),

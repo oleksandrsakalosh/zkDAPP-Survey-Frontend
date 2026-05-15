@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const snarkjs = require('snarkjs');
-const { buildEligibilityInputToFile } = require('./buildAgeInput');
+const { buildEligibilityInputToFile } = require('./buildEligibilityInput');
 const { generateWitness } = require('./generateWitness');
 const { generateProof } = require('./generateProof');
 const { verifyProof } = require('./verifyProof');

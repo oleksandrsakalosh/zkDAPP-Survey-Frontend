@@ -30,7 +30,7 @@ import {
   extractNumericValue,
   getAttributeCandidatesForRequirement,
 } from "@/utils/requirementAttributeMap";
-import { buildEligibilityCircuitInputFromToken } from "@/utils/sdjwt/eligibilityInput";
+import { buildEligibilityCircuitInputFromToken, parseValueForCircuit } from "@/utils/sdjwt/eligibilityInput";
 import { getOrCreateDeviceWallet } from "@/utils/vocdoni/wallet";
 import {
   CREDENTIAL_TYPES,
@@ -38,6 +38,7 @@ import {
   getCredentialTypeConfig,
 } from "@/utils/credentialConfig";
 import { getUtcPlus2YyyyMmDd } from "@/utils/zk/proofChecks";
+import { getResidencePermitCountryByLabel } from "@/utils/zk/residencePermitLocations";
 
 type Step =
   | "loading"
@@ -171,6 +172,83 @@ function resolveAgeRequirement(requirements: { type: string; value: string }[]) 
   }
 
   return { enableAgeCheck: "1", minAge: String(minAge) };
+}
+
+function padToFive(encoded: string[]): [string, string, string, string, string] {
+  const padded = encoded.slice(0, 5);
+  while (padded.length < 5) padded.push("0");
+  return padded as [string, string, string, string, string];
+}
+
+function normalizeRequirementTypeKey(type: string): string {
+  return String(type ?? "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function parseLocationParts(value: string): { country: string; region: string; district: string } {
+  const [country = "", region = "", district = ""] = String(value ?? "")
+    .split(/\s*\/\s*/)
+    .map((part) => part.trim());
+
+  return { country, region, district };
+}
+
+function parseMultiValue(value: string): string[] {
+  return String(value ?? "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function encodeCountryForCircuit(countryLabelOrCode: string): string {
+  const countryValue = countryLabelOrCode.trim();
+  const code = getResidencePermitCountryByLabel(countryValue)?.code ?? countryValue;
+  return parseValueForCircuit(code);
+}
+
+function resolveLocationRequirementInputs(requirements: { type: string; value: string }[]) {
+  let requiredCountry = "0";
+  let enableCountryCheck = "0";
+  let allowedRegions: [string, string, string, string, string] = ["0", "0", "0", "0", "0"];
+  let enableRegionCheck = "0";
+  let allowedDistricts: [string, string, string, string, string] = ["0", "0", "0", "0", "0"];
+  let enableDistrictCheck = "0";
+
+  for (const requirement of requirements) {
+    const typeKey = normalizeRequirementTypeKey(requirement.type);
+    const location = parseLocationParts(requirement.value);
+
+    if ((typeKey === "country" || typeKey === "location") && location.country) {
+      requiredCountry = encodeCountryForCircuit(location.country);
+      enableCountryCheck = "1";
+    }
+
+    const regionValue = location.region || (typeKey === "region" ? location.country : "");
+    if ((typeKey === "region" || typeKey === "location") && regionValue) {
+      const regionNames = parseMultiValue(regionValue);
+      if (regionNames.length > 0) {
+        allowedRegions = padToFive(regionNames.map(parseValueForCircuit));
+        enableRegionCheck = "1";
+      }
+    }
+
+    const districtValue = location.district || (typeKey === "district" ? location.country : "");
+    if ((typeKey === "district" || typeKey === "location") && districtValue) {
+      const districtNames = parseMultiValue(districtValue);
+      if (districtNames.length > 0) {
+        allowedDistricts = padToFive(districtNames.map(parseValueForCircuit));
+        enableDistrictCheck = "1";
+      }
+    }
+  }
+
+  return {
+    requiredCountry,
+    allowedRegions,
+    allowedDistricts,
+    enableCountryCheck,
+    enableRegionCheck,
+    enableDistrictCheck,
+  };
 }
 
 function isElectionExpired(election: ChainElection) {
@@ -402,6 +480,7 @@ export default function RegisterEligibilityScreen() {
       setEligibilityProof(null);
 
       const eligibilitySettings = resolveAgeRequirement(requirements);
+      const locationSettings = resolveLocationRequirementInputs(requirements);
       logProof(`Using SD-JWT from ${sourceLabel}.`);
       logProof(
         `Survey requirements: ${
@@ -415,6 +494,12 @@ export default function RegisterEligibilityScreen() {
         currentDate: normalizeYyyyMmDd(getUtcPlus2YyyyMmDd(), "Current date"),
         minAge: eligibilitySettings.minAge,
         enableAgeCheck: eligibilitySettings.enableAgeCheck,
+        requiredCountry: locationSettings.requiredCountry,
+        allowedRegions: locationSettings.allowedRegions,
+        allowedDistricts: locationSettings.allowedDistricts,
+        enableCountryCheck: locationSettings.enableCountryCheck,
+        enableRegionCheck: locationSettings.enableRegionCheck,
+        enableDistrictCheck: locationSettings.enableDistrictCheck,
       });
       const normalizedDobValue =
         eligibilitySettings.enableAgeCheck === "1"
@@ -637,6 +722,7 @@ export default function RegisterEligibilityScreen() {
                 </Text>
               </View>
             )}
+
           </View>
         )}
 

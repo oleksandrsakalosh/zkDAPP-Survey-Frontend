@@ -49,7 +49,7 @@ export function checkEligibility(
                 const [min, max] = req.value.split("-").map(Number);
                 pass = age >= min && age <= max;
             }
-        } else if (req.type === "Location") {
+        } else if (req.type === "Location" || req.type === "Country" || req.type === "Region" || req.type === "District") {
             pass = profile.location.toLowerCase().includes(req.value.toLowerCase());
         } else if (req.type === "Education level") {
             const userRank = EDUCATION_RANK[profile.education ?? ""] ?? -1;
